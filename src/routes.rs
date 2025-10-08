@@ -178,7 +178,7 @@ pub async fn get_peers(req: HttpRequest, app: web::Data<KeyChainData>) -> impl R
             peer_list.push(peer.clone());
         }
 
-        log::info!("Responding to get peers request");
+        // log::info!("Responding to get peers request");
 
         HttpResponse::Ok().body(
             serde_json::to_string(&PeerList { peers: peer_list })

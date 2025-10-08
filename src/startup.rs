@@ -1,5 +1,4 @@
 use actix_web::dev::Server;
-use actix_web::middleware::Logger;
 use actix_web::{App, HttpServer, web};
 use std::collections::{HashMap, HashSet};
 use std::net::TcpListener;

@@ -14,15 +14,18 @@ async fn connect_peers(port1: u16, port2: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
 async fn main() -> anyhow::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    let workers: usize = env::var("WORKERS").unwrap_or("1".to_string()).parse()?;
+    log::info!("Using {} worker(s)", workers);
 
     let mut handles = vec![];
     let mut ports = vec![];
     let mut apps = vec![];
     
-    for _ in 0..4 {
+    for _ in 0..workers {
         // spawn tasks that build and return the app instead of moving outer vectors into the task
         handles.push(tokio::spawn(async {
             KeyChain::build().await.expect("Failed to build app")
@@ -42,9 +45,9 @@ async fn main() -> anyhow::Result<()> {
         handles.push(tokio::spawn(app.run()));
     }
 
-    // randomly connect peers
-    // for _ in 1..4 {
-    //     let (i, j) = rand::thread_rng().r#gen::<(usize, usize)>();
+    // // randomly connect peers
+    // for _ in 0..1 {
+    //     let (i, j) = rand::random::<(usize, usize)>();
     //     let p1 = ports[i % ports.len()];
     //     let p2 = ports[j % ports.len()];
     //     connect_peers(p1, p2).await?;
