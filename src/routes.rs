@@ -6,7 +6,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::chain::{Node, NodeContent};
+use crate::chain::Node;
 use crate::peer::Peer;
 
 pub async fn index(app: web::Data<KeyChainData>) -> impl Responder {
@@ -61,13 +61,28 @@ pub struct PeerList {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct BlockMessage {
-    pub block: Node<NodeContent>,
+pub struct BlockMessage<S>
+where
+    S: Serialize,
+{
+    pub block: Node<S>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FindPeerRequest {
+    pub address: String,
+    pub hops: u8,
 }
 
 #[derive(Deserialize)]
 pub struct ManualPeerForm {
     port: u16,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ChainMeta {
+    pub len: usize,
+    pub head_hash: Option<String>,
 }
 
 pub async fn add_peer(req: web::Json<PeerMessage>, app: web::Data<KeyChainData>) -> impl Responder {
@@ -178,8 +193,6 @@ pub async fn get_peers(req: HttpRequest, app: web::Data<KeyChainData>) -> impl R
             peer_list.push(peer.clone());
         }
 
-        log::info!("Responding to get peers request");
-
         HttpResponse::Ok().body(
             serde_json::to_string(&PeerList { peers: peer_list })
                 .expect("Failed to serialize to JSON"),
@@ -196,15 +209,25 @@ pub async fn get_chain(app: web::Data<KeyChainData>) -> impl Responder {
     HttpResponse::Ok().json(&*chain)
 }
 
+pub async fn get_chain_meta(app: web::Data<KeyChainData>) -> impl Responder {
+    let chain = app.chain.read().await;
+    let head_hash = chain.last().map(|node| hex::encode(node.hash));
+    let meta = ChainMeta {
+        len: chain.len(),
+        head_hash,
+    };
+    HttpResponse::Ok().json(meta)
+}
+
 pub async fn add_block(
-    req: web::Json<BlockMessage>,
+    req: web::Json<BlockMessage<String>>,
     app: web::Data<KeyChainData>,
 ) -> impl Responder {
     let new_block = req.into_inner().block;
     let mut chain = app.chain.write().await;
     let current_head = chain.last().unwrap();
 
-    if new_block.parent == Some(current_head.hash) {
+    if new_block.is_valid(&current_head) {
         log::info!("Added new block to chain from peer.");
         chain.push(new_block);
         HttpResponse::Ok().finish()

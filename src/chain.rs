@@ -11,7 +11,7 @@ pub type NodeContent = String;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node<S>
 where
-    S: Serialize
+    S: Serialize,
 {
     pub message: S,
     #[serde_as(as = "Option<Hex>")]
@@ -23,7 +23,7 @@ where
 
 impl<S> PartialEq for Node<S>
 where
-    S: Serialize
+    S: Serialize,
 {
     fn eq(&self, other: &Self) -> bool {
         self.hash == other.hash
@@ -32,7 +32,7 @@ where
 
 impl<S> Node<S>
 where
-    S: Serialize
+    S: Serialize,
 {
     /// Mines a new genesis block (no parent).
     pub fn new(message: S) -> Self {
@@ -83,6 +83,53 @@ where
                 nonce += 1;
             }
         }
+    }
+
+    /// Checks if a block is valid by verifying its proof-of-work.
+    pub fn is_valid_pow(&self) -> bool {
+        let message_bytes = serde_json::to_vec(&self.message).unwrap();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&message_bytes);
+        if let Some(p_hash) = self.parent {
+            hasher.update(&p_hash);
+        }
+        hasher.update(&self.nonce.to_le_bytes());
+        let hash = hasher.finalize();
+
+        if hash.as_bytes() != &self.hash {
+            return false;
+        }
+
+        let (_left, right) = hash.as_bytes().split_at(blake3::OUT_LEN - STRENGTH);
+        right.iter().all(|&b| b == 0)
+    }
+
+    /// Checks if a new block is a valid successor to the current one.
+    pub fn is_valid(&self, parent: &Node<S>) -> bool {
+        if self.parent != Some(parent.hash) {
+            return false;
+        }
+        self.is_valid_pow()
+    }
+
+    /// Validates an entire chain.
+    pub fn validate_chain(chain: &[Node<S>]) -> bool {
+        if chain.is_empty() {
+            return true;
+        }
+        // Check genesis block
+        if !chain[0].is_valid_pow() {
+            log::warn!("Genesis block has invalid PoW");
+            return false;
+        }
+        // Check subsequent blocks
+        for i in 1..chain.len() {
+            if !chain[i].is_valid(&chain[i - 1]) {
+                log::warn!("Invalid block at index {}", i);
+                return false;
+            }
+        }
+        true
     }
 }
 

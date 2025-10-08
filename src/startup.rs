@@ -1,15 +1,15 @@
+use crate::chain::Node;
+use crate::peer::Peer;
+use crate::routes::*;
+use crate::routes::{BlockMessage, ChainMeta, PeerList};
 use actix_web::dev::Server;
-use actix_web::middleware::Logger;
 use actix_web::{App, HttpServer, web};
 use std::collections::{HashMap, HashSet};
 use std::net::TcpListener;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-use crate::chain::{Node, NodeContent};
-use crate::peer::Peer;
-use crate::routes;
-use crate::routes::{BlockMessage, PeerList};
+use crate::chain::NodeContent;
 
 pub struct KeyChain {
     server: Server,
@@ -45,14 +45,15 @@ impl KeyChain {
             App::new()
                 // .wrap(Logger::default())
                 .app_data(keychain.clone())
-                .route("/", web::get().to(routes::index))
-                .route("/add_peer", web::post().to(routes::add_peer)) // GET /add_peer
-                .route("/add_peer", web::get().to(routes::add_peer_form)) // GET /add_peer
-                .route("/add_peer_manual", web::post().to(routes::add_peer_manual))
-                .route("/get_peers", web::get().to(routes::get_peers))
-                .route("/chain", web::get().to(routes::get_chain))
-                .route("/block", web::post().to(routes::add_block))
-                .route("/health_check", web::get().to(routes::health_check))
+                .route("/", web::get().to(index))
+                .route("/add_peer", web::post().to(add_peer))
+                .route("/add_peer", web::get().to(add_peer_form))
+                .route("/add_peer_manual", web::post().to(add_peer_manual))
+                .route("/get_peers", web::get().to(get_peers))
+                .route("/chain", web::get().to(get_chain))
+                .route("/chain/meta", web::get().to(get_chain_meta))
+                .route("/block", web::post().to(add_block))
+                .route("/health_check", web::get().to(health_check))
         })
         .listen(listener)?
         .workers(1)
@@ -157,16 +158,18 @@ async fn gossip_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
             .build()?;
 
         let mut peers_to_add: Vec<Peer> = vec![];
-        let mut all_chains: HashMap<Peer, Vec<Node<NodeContent>>> = HashMap::new();
+        let mut candidate_chains: HashMap<Peer, Vec<Node<String>>> = HashMap::new();
+        let local_chain_len = app.chain.read().await.len();
 
         for peer in peers.iter() {
-            match client
+            // First, get peer's peers
+            if let Ok(response) = client
                 .get(format!("{}/get_peers", peer.address))
                 .timeout(Duration::from_secs(3))
                 .send()
                 .await
             {
-                Ok(response) if response.status().is_success() => {
+                if response.status().is_success() {
                     if let Ok(new_peers) = serde_json::from_str::<PeerList>(&response.text().await?)
                     {
                         for peer in new_peers.peers {
@@ -174,39 +177,56 @@ async fn gossip_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
                                 peers_to_add.push(peer);
                             }
                         }
-                    } else {
-                        log::warn!("Got invalid response from {}", peer.address);
                     }
-                }
-                _ => {
-                    log::warn!("Failed to gossip peers from {}", peer.address);
                 }
             }
 
-            match client
-                .get(format!("{}/chain", peer.address))
+            // Next, get chain metadata to see if we need to sync
+            if let Ok(response) = client
+                .get(format!("{}/chain/meta", peer.address))
                 .timeout(Duration::from_secs(3))
                 .send()
                 .await
             {
-                Ok(response) if response.status().is_success() => {
-                    if let Ok(chain) = response.json::<Vec<Node<NodeContent>>>().await {
-                        all_chains.insert(peer.clone(), chain);
-                    } else {
-                        log::warn!("Got invalid chain from {}", peer.address);
+                if response.status().is_success() {
+                    if let Ok(meta) = response.json::<ChainMeta>().await {
+                        // Only download the full chain if it's longer than ours
+                        if meta.len > local_chain_len {
+                            log::info!(
+                                "Peer {} has a longer chain (len: {}), downloading.",
+                                peer.address,
+                                meta.len
+                            );
+                            if let Ok(chain_response) = client
+                                .get(format!("{}/chain", peer.address))
+                                .timeout(Duration::from_secs(10)) // Allow more time for chain download
+                                .send()
+                                .await
+                            {
+                                if let Ok(chain) = chain_response.json::<Vec<Node<String>>>().await
+                                {
+                                    candidate_chains.insert(peer.clone(), chain);
+                                }
+                            }
+                        }
                     }
-                }
-                _ => {
-                    log::warn!("Failed to get chain from {}", peer.address);
                 }
             }
         }
 
-        if let Some(longest_chain) = all_chains.values().max_by_key(|c| c.len()) {
+        if let Some(longest_chain) = candidate_chains.values().max_by_key(|c| c.len()) {
             let mut local_chain = app.chain.write().await;
             if longest_chain.len() > local_chain.len() {
-                log::info!("Found longer chain, updating local chain.");
-                *local_chain = longest_chain.clone();
+                // Validate the received chain before adopting it
+                if Node::validate_chain(longest_chain) {
+                    log::info!(
+                        "Found longer valid chain (length {}), updating local chain.",
+                        longest_chain.len()
+                    );
+                    *local_chain = longest_chain.clone();
+                } else {
+                    log::warn!("Received longer but invalid chain. Discarding.");
+                }
             }
         }
 
@@ -227,8 +247,7 @@ async fn mining_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
 
         let message = format!("Block mined by {}", app.port());
 
-        let new_block =
-            tokio::task::spawn_blocking(move || Node::append(message, &parent)).await?;
+        let new_block = tokio::task::spawn_blocking(move || Node::append(message, &parent)).await?;
 
         let peers = {
             let peers = app.peers.read().await;

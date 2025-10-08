@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let mut handles = vec![];
     let mut ports = vec![];
     let mut apps = vec![];
-    
+
     for _ in 0..4 {
         // spawn tasks that build and return the app instead of moving outer vectors into the task
         handles.push(tokio::spawn(async {
