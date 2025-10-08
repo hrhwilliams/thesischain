@@ -4,7 +4,7 @@ use crate::routes::*;
 use crate::routes::{BlockMessage, ChainMeta, PeerList};
 use actix_web::dev::Server;
 use actix_web::{App, HttpServer, web};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::TcpListener;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -22,6 +22,7 @@ pub struct KeyChainData {
     pub chain: RwLock<Vec<Node<NodeContent>>>,
     pub health_check_interval: Duration,
     pub gossip_interval: Duration,
+    pub pending_messages: RwLock<VecDeque<NodeContent>>,
 }
 
 impl KeyChain {
@@ -37,6 +38,7 @@ impl KeyChain {
             chain: RwLock::new(vec![genesis_node]),
             health_check_interval: Duration::from_secs(5),
             gossip_interval: Duration::from_secs(5),
+            pending_messages: RwLock::new(VecDeque::<NodeContent>::new()),
         });
 
         let data = keychain.clone();
@@ -245,7 +247,17 @@ async fn mining_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
             chain.last().unwrap().clone()
         };
 
-        let message = format!("Block mined by {}", app.port());
+        let mut pop_front = false;
+
+        let message = {
+            let message_queue = app.pending_messages.read().await;
+            if let Some(first) = message_queue.front() {
+                pop_front = true;
+                first.clone()
+            } else {
+                format!("Block mined by {}", app.port())
+            }
+        };
 
         let new_block = tokio::task::spawn_blocking(move || Node::append(message, &parent)).await?;
 
@@ -269,6 +281,11 @@ async fn mining_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
         if new_block.parent == Some(chain.last().unwrap().hash) {
             log::info!("Mined a new block and added to local chain.");
             chain.push(new_block);
+
+            if pop_front {
+                let mut message_queue = app.pending_messages.write().await;
+                message_queue.pop_front();
+            }
         } else {
             log::info!("Mined block is outdated, starting over.");
         }

@@ -18,6 +18,7 @@ where
     pub parent: Option<[u8; blake3::OUT_LEN]>,
     #[serde_as(as = "Hex")]
     pub hash: [u8; blake3::OUT_LEN],
+    pub timestamp: String,
     pub nonce: usize,
 }
 
@@ -36,24 +37,33 @@ where
 {
     /// Mines a new genesis block (no parent).
     pub fn new(message: S) -> Self {
-        let (hash, nonce) = Self::mine(&message, None);
+        let now = chrono::Utc::now();
+        let timestamp = now.to_rfc3339();
+
+        let (hash, nonce) = Self::mine(&message, &now, None);
 
         Self {
             message,
             parent: None,
             hash,
+            timestamp,
             nonce,
         }
     }
 
     /// Mines a new block that appends to a parent block.
     pub fn append(message: S, parent: &Node<S>) -> Self {
-        let (hash, nonce) = Self::mine(&message, Some(&parent.hash));
+        let now = chrono::Utc::now();
+        let timestamp = now.to_rfc3339();
+
+        let (hash, nonce) = Self::mine(&message, &now, Some(&parent.hash));
+
 
         Self {
             message,
             parent: Some(parent.hash),
             hash,
+            timestamp,
             nonce,
         }
     }
@@ -61,6 +71,7 @@ where
     /// Private helper function to perform the proof-of-work mining.
     fn mine(
         message: &S,
+        now: &chrono::DateTime<chrono::Utc>,
         parent_hash: Option<&[u8; blake3::OUT_LEN]>,
     ) -> ([u8; blake3::OUT_LEN], usize) {
         let mut nonce: usize = 0;
@@ -72,6 +83,7 @@ where
             if let Some(p_hash) = parent_hash {
                 hasher.update(p_hash);
             }
+            hasher.update(&now.to_rfc3339().as_bytes());
             hasher.update(&nonce.to_le_bytes());
 
             let hash = hasher.finalize();
