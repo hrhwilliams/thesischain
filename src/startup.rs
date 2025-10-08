@@ -288,6 +288,36 @@ async fn mining_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
             }
         } else {
             log::info!("Mined block is outdated, starting over.");
+
+            if app.pending_messages.read().await.len() > 6 {
+                log::warn!("Pending message queue > 6");
+            }
         }
     }
 }
+
+// thoughts:
+// - possibly unreasonable to ask to download entire chain from a single host
+//   - could implement some kind of block exchange protocol to get missing blocks from multiple peers
+//   - could implement some kind of bloom filter to quickly check which blocks a peer has
+//   - could implement some kind of checkpointing to avoid downloading entire chain from scratch
+// - message is not guaranteed to ever send because node might never get lucky enough to publish a block
+//   - send messages to multiple peers, bundle multiple messages into a single block
+//     - nodes could then either be miners or just nodes using the chain to verify messages
+//     - would need way to avoid posting a message more than once
+//   - implement some kind of transaction pool to hold pending messages
+
+// i want to be able to swap out protocols for obtaining keys from the chain
+// - naive protocol: find a peer's key from the chain and use it
+// - routes protocol: ask multiple peers to send verification challenges to a host
+//   - if they get different keys, the route is probably being tampered with
+//   - if they get the same key, it's probably safe to use
+// - web of trust protocol: ask multiple peers to vouch for a host's key
+//   - if enough peers vouch for the key, it's probably safe to use
+//   - if not enough peers vouch for the key, it's probably not safe to use
+// - hybrid protocol: use a combination of the above protocols to obtain keys
+//   - could use routes protocol to get initial key, then use web of trust to verify
+//   - could use naive protocol to get initial key, then use routes protocol to verify
+// - routes protocol is literally just web of trust protocol with a challenge step
+// - could also implement a reputation system to weight peer responses
+//   - however, this could be gamed by sybil attacks
