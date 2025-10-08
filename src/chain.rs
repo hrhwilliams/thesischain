@@ -105,6 +105,7 @@ where
         if let Some(p_hash) = self.parent {
             hasher.update(&p_hash);
         }
+        hasher.update(&self.timestamp.as_bytes());
         hasher.update(&self.nonce.to_le_bytes());
         let hash = hasher.finalize();
 
