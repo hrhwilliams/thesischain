@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-use crate::chain::Node;
+use crate::chain::{Node, NodeContent};
 use crate::peer::Peer;
 use crate::routes;
 use crate::routes::{BlockMessage, PeerList};
@@ -19,7 +19,7 @@ pub struct KeyChain {
 pub struct KeyChainData {
     port: u16,
     pub peers: RwLock<HashSet<Peer>>,
-    pub chain: RwLock<Vec<Node>>,
+    pub chain: RwLock<Vec<Node<NodeContent>>>,
     pub health_check_interval: Duration,
     pub gossip_interval: Duration,
 }
@@ -29,7 +29,7 @@ impl KeyChain {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let port = listener.local_addr()?.port();
 
-        let genesis_node = tokio::task::spawn_blocking(|| Node::new("genesis")).await?;
+        let genesis_node = tokio::task::spawn_blocking(|| Node::new("genesis".to_string())).await?;
 
         let keychain = web::Data::new(KeyChainData {
             port,
@@ -43,7 +43,7 @@ impl KeyChain {
 
         let server = HttpServer::new(move || {
             App::new()
-                .wrap(Logger::default())
+                // .wrap(Logger::default())
                 .app_data(keychain.clone())
                 .route("/", web::get().to(routes::index))
                 .route("/add_peer", web::post().to(routes::add_peer)) // GET /add_peer
@@ -157,7 +157,7 @@ async fn gossip_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
             .build()?;
 
         let mut peers_to_add: Vec<Peer> = vec![];
-        let mut all_chains: HashMap<Peer, Vec<Node>> = HashMap::new();
+        let mut all_chains: HashMap<Peer, Vec<Node<NodeContent>>> = HashMap::new();
 
         for peer in peers.iter() {
             match client
@@ -190,7 +190,7 @@ async fn gossip_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
                 .await
             {
                 Ok(response) if response.status().is_success() => {
-                    if let Ok(chain) = response.json::<Vec<Node>>().await {
+                    if let Ok(chain) = response.json::<Vec<Node<NodeContent>>>().await {
                         all_chains.insert(peer.clone(), chain);
                     } else {
                         log::warn!("Got invalid chain from {}", peer.address);
@@ -228,7 +228,7 @@ async fn mining_task(app: web::Data<KeyChainData>) -> anyhow::Result<()> {
         let message = format!("Block mined by {}", app.port());
 
         let new_block =
-            tokio::task::spawn_blocking(move || Node::append(&message, &parent)).await?;
+            tokio::task::spawn_blocking(move || Node::append(message, &parent)).await?;
 
         let peers = {
             let peers = app.peers.read().await;

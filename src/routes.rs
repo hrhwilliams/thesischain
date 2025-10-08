@@ -6,7 +6,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::chain::Node;
+use crate::chain::{Node, NodeContent};
 use crate::peer::Peer;
 
 pub async fn index(app: web::Data<KeyChainData>) -> impl Responder {
@@ -62,7 +62,7 @@ pub struct PeerList {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BlockMessage {
-    pub block: Node,
+    pub block: Node<NodeContent>,
 }
 
 #[derive(Deserialize)]
