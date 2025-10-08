@@ -1,4 +1,3 @@
-use thesischain::peer::*;
 use thesischain::routes::*;
 use thesischain::startup::*;
 
