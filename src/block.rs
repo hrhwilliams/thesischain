@@ -1,17 +1,12 @@
 use blake3::Hash;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Block {
-    block: UnhashedBlock,
-    hash: Hash,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct UnhashedBlock {
     items: Vec<SignedBlockItem>,
     timestamp: String,
     parent: Hash,
+    hash: Hash,
     nonce: usize,
 }
 
