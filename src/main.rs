@@ -1,75 +1,8 @@
-use thesischain::routes::*;
-use thesischain::startup::*;
+use axum::{routing::get, Router};
 
-async fn connect_peers(port1: u16, port2: u16) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-    client
-        .post(format!("http://localhost:{}/add_peer", port1))
-        .json(&PeerMessage {
-            address: format!("http://127.0.0.1:{}", port2),
-        })
-        .send()
-        .await?;
-
-    Ok(())
-}
-
-#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
-async fn main() -> anyhow::Result<()> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-
-    let workers: usize = env::var("WORKERS").unwrap_or("1".to_string()).parse()?;
-    log::info!("Using {} worker(s)", workers);
-
-    let mut handles = vec![];
-    let mut ports = vec![];
-    let mut apps = vec![];
-    
-    for _ in 0..workers {
-        // spawn tasks that build and return the app instead of moving outer vectors into the task
-        handles.push(tokio::spawn(async {
-            KeyChain::build().await.expect("Failed to build app")
-        }));
-    }
-
-    // wait for all builds to complete and collect the apps on this task
-    let results = futures::future::join_all(handles).await;
-    let mut handles = vec![];
-    for res in results {
-        let app = res.expect("task join failed");
-        ports.push(app.port());
-        apps.push(app);
-    }
-
-    for app in apps {
-        handles.push(tokio::spawn(app.run()));
-    }
-
-    // // randomly connect peers
-    // for _ in 0..1 {
-    //     let (i, j) = rand::random::<(usize, usize)>();
-    //     let p1 = ports[i % ports.len()];
-    //     let p2 = ports[j % ports.len()];
-    //     connect_peers(p1, p2).await?;
-    // }
-
-    // connect all peers to each other
-    for i in 0..ports.len() {
-        for j in 0..ports.len() {
-            if i != j {
-                let p1 = ports[i];
-                let p2 = ports[j];
-                connect_peers(p1, p2).await?;
-                connect_peers(p2, p1).await?;
-            }
-        }
-    }
-
-    // print out url to access each peer
-    for port in ports.iter() {
-        println!("Peer running at http://127.0.0.1:{}", port);
-    }
-
-    futures::future::join_all(handles).await;
-    Ok(())
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route("/", get(|| async { "Hello, World!" }));
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
