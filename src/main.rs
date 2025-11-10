@@ -1,16 +1,27 @@
 use axum::{Json, Router, extract::State, http::StatusCode, response::Html, routing::get};
+use base64::prelude::*;
+use rand_core::OsRng;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use p256::ecdh::diffie_hellman;
+use p256::ecdsa::SigningKey;
+use p256::{PublicKey, SecretKey};
+use hkdf::Hkdf;
+use sha2::Sha256;
+
 #[derive(Clone, Serialize)]
 struct Peer {
     address: String,
+    public_key: PublicKey,
 }
 
 #[derive(Clone)]
 struct AppState {
+    secret: SecretKey,
+    signing: SigningKey,
     peers: Arc<RwLock<Vec<Peer>>>,
     port: u16,
 }
@@ -27,119 +38,71 @@ async fn main() {
     let port = listener.local_addr().unwrap().port();
     println!("Server running on http://localhost:{}", port);
 
+    // let alice_private = SecretKey::random(&mut OsRng);
+    // let alice_sign = SigningKey::random(&mut OsRng);
+    // let alice_verify = alice_sign.verifying_key();
+    // let alice_public = alice_private.public_key();
+
+    // let bob_private = SecretKey::random(&mut OsRng);
+    // let bob_public = bob_private.public_key();
+
+    // let alice_bytes = alice_public.to_sec1_bytes();
+    // let bob_bytes = bob_public.to_sec1_bytes();
+
+    // let ab_public = PublicKey::from_sec1_bytes(&bob_bytes).ok().unwrap();
+    // let ba_public = PublicKey::from_sec1_bytes(&alice_bytes).ok().unwrap();
+
+    // let alice_secret = diffie_hellman(alice_private.to_nonzero_scalar(), ab_public.as_affine());
+
+    // let ikm = alice_secret.raw_secret_bytes();
+    // let salt = b"my-protocol-salt-v1";
+    // let info = b"info";
+    // let hk = Hkdf::<Sha256>::new(Some(&salt[..]), &ikm);
+    // let mut okm = [0u8; 33];
+    // hk.expand(info, &mut okm).expect("expand");
+
+    // println!("{}", BASE64_STANDARD.encode(okm));
+
+    // let bob_secret = diffie_hellman(bob_private.to_nonzero_scalar(), ba_public.as_affine());
+
+    // let ikm = bob_secret.raw_secret_bytes();
+    // let salt = b"my-protocol-salt-v1";
+    // let info = b"info";
+    // let hk = Hkdf::<Sha256>::new(Some(&salt[..]), &ikm);
+    // let mut okm = [0u8; 33];
+    // hk.expand(info, &mut okm).expect("expand");
+
+    // println!("{}", BASE64_STANDARD.encode(okm));
+
     let shared_state = AppState {
+        secret: SecretKey::random(&mut OsRng),
+        signing: SigningKey::random(&mut OsRng),
         peers: Arc::new(RwLock::new(vec![])),
         port,
     };
 
     let app = Router::new()
-        .route("/", get(index))
-        .route("/add_peer", get(add_peer).post(add_peer_post))
-        .route("/get_peers", get(get_peers))
-        .route("/health", get(health))
-        // .route("/chain", get(chain))
         .with_state(shared_state);
 
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn index(State(state): State<AppState>) -> Html<String> {
-    let peers = {
-        let peers = state.peers.read().await;
-        peers.clone()
-    };
+// gossip-based public-key verification:
+// peer A connects to peer B
+// peer A connects to peer C
+// peer A asks peer C what peer B's public key is
 
-    let peers_list = peers
-        .iter()
-        .map(|peer| {
-            format!(
-                r#"<li><a href="{}">{}</a></li>"#,
-                peer.address, peer.address
-            )
-        })
-        .collect::<Vec<String>>()
-        .join("\n");
+// response has four cases:
+// peer C is a bad actor and gives a correct public key (tells truth)
+// peer C is a bad actor and gives an incorrect public key (lies)
+// peer C is a good actor and gives a correct public key
+// peer C is a good actor and gives an incorrect public key
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en-US">
-<head>
-    <meta content-type="text/html" charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Node {}</title>
-</head>
-<body>
-    <h1>Node {} - Index</h1>
-    <p><a href="/chain">Chain</a> | <a href="/add_peer">Add Peer</a></p>
-    <br>
-    <ul>
-    {}
-    </ul>
-</body>
-</html>"#,
-        state.port(),
-        state.port(),
-        peers_list
-    ))
-}
-
-async fn add_peer(State(state): State<AppState>) -> Html<String> {
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en-US">
-<head>
-    <meta content-type="text/html" charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Node {} - Add Peer</title>
-</head>
-<body>
-    <h1>Node {} - Add Peer</h1>
-    <form action="/add_peer" method="post">
-        <label for="port">Peer Port:</label>
-        <input type="text" id="port" name="port" required>
-        <button type="submit">Add Peer</button>
-    </form>
-    <p><a href="/">Home</a></p>
-</body>
-</html>"#,
-        state.port(),
-        state.port()
-    ))
-}
-
-async fn add_peer_post(
-    State(state): State<AppState>,
-    axum::extract::Form(form): axum::extract::Form<HashMap<String, String>>,
-) -> Result<Html<String>, StatusCode> {
-    if let Some(port) = form.get("port") {
-        if let Ok(port) = port.parse::<u16>() {
-            {
-                let mut peers = state.peers.write().await;
-                peers.push(Peer {
-                    address: format!("http://localhost:{}", port),
-                });
-            }
-
-            Ok(index(State(state)).await)
-        } else {
-            Err(StatusCode::BAD_REQUEST)
-        }
-    } else {
-        Err(StatusCode::BAD_REQUEST)
-    }
-}
-
-// Return a JSON of peers this host knows
-#[axum::debug_handler]
-async fn get_peers(State(state): State<AppState>) -> Json<Vec<Peer>> {
-    let peers = {
-        let peers = state.peers.read().await;
-        peers.clone()
-    };
-
-    Json(peers)
-}
-
-async fn health() -> StatusCode {
-    StatusCode::OK
-}
+// an adversary can either have a bunch of peers that lie about B's
+// public key, or can trick a bunch of good peers about B's public key
+// threshold can be 25% trick, 25% lie
+//
+// peer B has 50 peers connected, need to make at least 25 or 26 fake peers
+// to lie, and trick at least 25 or 26 newly connecting peers to connecting
+// to adversary instead, then gossip will start pointing to adversary rather
+// than peer B 
