@@ -3,7 +3,3 @@ resolver = "3"
 members = ["common","swarm-only"]
 
 [workspace.dependencies]
-dotenvy = "0.15"
-serde = { version = "1", features = ["derive"] }
-p256 = { version = "0.13", features = ["ecdh", "serde"] }
-tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "fs"] }
