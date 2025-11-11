@@ -1,0 +1,23 @@
+[package]
+name = "swarm-only"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/main.rs"
+
+[[bin]]
+name = "edge"
+path = "src/edge/main.rs"
+
+[dependencies]
+common = { path = "../common/" }
+dotenvy = { workspace = true }
+p256 = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }

@@ -1,0 +1,11 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dotenvy = { workspace = true }
+libp2p = { version = "0.56.0", features = ["noise", "mdns"] }
+p256 = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
