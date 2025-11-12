@@ -1,5 +1,28 @@
-[workspace]
-resolver = "3"
-members = ["common","swarm-only"]
+[package]
+name = "thesischain"
+version = "0.1.0"
+edition = "2024"
 
-[workspace.dependencies]
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "thesischain"
+path = "src/main.rs"
+
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+
+[dependencies]
+anyhow = "1.0.100"
+axum = { version = "0.8.6", features = ["ws"] }
+dotenvy = "0.15.7"
+env_filter = "0.1.4"
+libp2p = { version = "0.56.0", features = ["tokio", "dns", "kad", "mdns", "macros", "quic"] }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.48.0", features = ["full"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["fs"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
