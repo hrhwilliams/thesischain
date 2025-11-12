@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use libp2p::{
-    StreamProtocol,
+    StreamProtocol, Swarm,
     futures::StreamExt,
     identity,
     kad::{self, Mode, store::MemoryStore},
@@ -10,6 +10,8 @@ use libp2p::{
     tcp, yamux,
 };
 use tokio::sync::{mpsc::Sender, oneshot};
+
+mod swarm;
 
 const IPFS_PROTO_NAME: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
 
@@ -45,12 +47,12 @@ impl EdgeNodes {
 
         let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key.clone())
             .with_tokio()
-            .with_tcp(
-                tcp::Config::default(),
-                noise::Config::new,
-                yamux::Config::default,
-            )?
-            // .with_quic()
+            // .with_tcp(
+            //     tcp::Config::default(),
+            //     noise::Config::new,
+            //     yamux::Config::default,
+            // )?
+            .with_quic()
             // .with_dns()?
             .with_behaviour(|key| {
                 let mut cfg = kad::Config::new(IPFS_PROTO_NAME);
@@ -70,8 +72,8 @@ impl EdgeNodes {
         swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server));
         let (tx, mut rx) = tokio::sync::mpsc::channel::<SwarmRequest>(128);
 
-        swarm.listen_on("/ip4/172.28.16.1/tcp/0".parse()?)?;
-        // swarm.listen_on("/ip4/127.0.0.1/udp/0/quic-v1".parse()?)?;
+        // swarm.listen_on("/ip4/172.28.16.1/tcp/0".parse()?)?;
+        swarm.listen_on("/ip4/172.28.16.1/udp/0/quic-v1".parse()?)?;
 
         tokio::spawn(async move {
             let mut pending_requests: HashMap<kad::QueryId, oneshot::Sender<SwarmResponse>> =
@@ -117,82 +119,7 @@ impl EdgeNodes {
                         }
                     },
                     event = swarm.select_next_some() => {
-                        match event {
-                            SwarmEvent::NewListenAddr { .. } => {
-                            },
-                            SwarmEvent::Behaviour(BehaviourEvent::Mdns(event)) => match event {
-                                mdns::Event::Discovered(list) => {
-                                    for (peer_id, addr) in list {
-                                        swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
-                                        if let Err(err) = swarm.dial(addr) {
-                                            tracing::warn!("dial to {peer_id} failed: {err}");
-                                        }
-                                    }
-                                }
-                                mdns::Event::Expired(list) => {
-                                    for (peer_id, addr) in list {
-                                        swarm.behaviour_mut().kademlia.remove_address(&peer_id, &addr);
-                                    }
-                                }
-                            }
-                            SwarmEvent::Behaviour(BehaviourEvent::Kademlia(
-                                kad::Event::OutboundQueryProgressed { id, result, .. },
-                            )) => {
-                                match result {
-                                    kad::QueryResult::PutRecord(outcome) => {
-                                        let response = match outcome {
-                                            Ok(kad::PutRecordOk { key }) => {
-                                                println!(
-                                                    "Successfully put record {:?}",
-                                                    std::str::from_utf8(key.as_ref()).unwrap()
-                                                );
-                                                Ok(())
-                                            }
-                                            Err(err) => {
-                                                eprintln!("Failed to put record: {err:?}");
-                                                Err(err.into())
-                                            }
-                                        };
-
-                                        if let Some(reply) = pending_requests.remove(&id) {
-                                            let _ = reply.send(SwarmResponse::PutRecord(response));
-                                        }
-                                    },
-                                    kad::QueryResult::GetRecord(outcome) => {
-                                        let response = match outcome {
-                                            Ok(kad::GetRecordOk::FoundRecord(peer_record)) => {
-                                                match String::from_utf8(peer_record.record.value.clone()) {
-                                                    Ok(value) => {
-                                                        println!(
-                                                            "Found record {:?}",
-                                                            std::str::from_utf8(peer_record.record.key.as_ref()).unwrap_or("<invalid>")
-                                                        );
-                                                        Ok(Some(value))
-                                                    }
-                                                    Err(err) => {
-                                                        eprintln!("Failed to decode record value: {err:?}");
-                                                        Err(err.into())
-                                                    }
-                                                }
-                                            }
-                                            Ok(kad::GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
-                                                Ok(None)
-                                            }
-                                            Err(err) => {
-                                                eprintln!("Failed to get record: {err:?}");
-                                                Err(err.into())
-                                            }
-                                        };
-
-                                        if let Some(reply) = pending_requests.remove(&id) {
-                                            let _ = reply.send(SwarmResponse::GetRecord(response));
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
-                        }
+                        handle_event(&mut swarm, &mut pending_requests, event)
                     }
                 }
             }
@@ -228,5 +155,92 @@ impl EdgeNodes {
             SwarmResponse::GetRecord(result) => result,
             SwarmResponse::PutRecord(_) => Err(anyhow::anyhow!("unexpected put record response")),
         }
+    }
+}
+
+fn handle_event(
+    swarm: &mut Swarm<Behaviour>,
+    pending_requests: &mut HashMap<kad::QueryId, oneshot::Sender<SwarmResponse>>,
+    event: SwarmEvent<BehaviourEvent>,
+) {
+    match event {
+        SwarmEvent::NewListenAddr { .. } => {}
+        SwarmEvent::Behaviour(BehaviourEvent::Mdns(event)) => match event {
+            mdns::Event::Discovered(list) => {
+                for (peer_id, addr) in list {
+                    swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, addr.clone());
+                    if let Err(err) = swarm.dial(addr) {
+                        tracing::warn!("dial to {peer_id} failed: {err}");
+                    }
+                }
+            }
+            mdns::Event::Expired(list) => {
+                for (peer_id, addr) in list {
+                    swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .remove_address(&peer_id, &addr);
+                }
+            }
+        },
+        SwarmEvent::Behaviour(BehaviourEvent::Kademlia(kad::Event::OutboundQueryProgressed {
+            id,
+            result,
+            ..
+        })) => match result {
+            kad::QueryResult::PutRecord(outcome) => {
+                let response = match outcome {
+                    Ok(kad::PutRecordOk { key }) => {
+                        println!(
+                            "Successfully put record {:?}",
+                            std::str::from_utf8(key.as_ref()).unwrap()
+                        );
+                        Ok(())
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to put record: {err:?}");
+                        Err(err.into())
+                    }
+                };
+
+                if let Some(reply) = pending_requests.remove(&id) {
+                    let _ = reply.send(SwarmResponse::PutRecord(response));
+                }
+            }
+            kad::QueryResult::GetRecord(outcome) => {
+                let response = match outcome {
+                    Ok(kad::GetRecordOk::FoundRecord(peer_record)) => {
+                        match String::from_utf8(peer_record.record.value.clone()) {
+                            Ok(value) => {
+                                println!(
+                                    "Found record {:?}",
+                                    std::str::from_utf8(peer_record.record.key.as_ref())
+                                        .unwrap_or("<invalid>")
+                                );
+                                Ok(Some(value))
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to decode record value: {err:?}");
+                                Err(err.into())
+                            }
+                        }
+                    }
+                    Ok(kad::GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => Ok(None),
+                    Err(err) => {
+                        eprintln!("Failed to get record: {err:?}");
+                        Err(err.into())
+                    }
+                };
+
+                if let Some(reply) = pending_requests.remove(&id) {
+                    let _ = reply.send(SwarmResponse::GetRecord(response));
+                }
+            }
+            _ => {}
+        },
+        _ => {}
     }
 }
