@@ -7,13 +7,14 @@ use serde::Serialize;
 
 pub enum ApiError {
     Generic,
+    NotFound,
     KademliaError(String),
 }
 
 #[derive(Serialize)]
 struct ErrorJson {
     message: String,
-    detail: Option<String>
+    detail: Option<String>,
 }
 
 impl From<ApiError> for Response {
@@ -23,7 +24,15 @@ impl From<ApiError> for Response {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorJson {
                     message: "generic server error".to_string(),
-                    detail: None
+                    detail: None,
+                }),
+            )
+                .into_response(),
+            ApiError::NotFound => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorJson {
+                    message: "resource not found".to_string(),
+                    detail: None,
                 }),
             )
                 .into_response(),
@@ -31,7 +40,7 @@ impl From<ApiError> for Response {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorJson {
                     message: "kademlia error".to_string(),
-                    detail: Some(reason)
+                    detail: Some(reason),
                 }),
             )
                 .into_response(),

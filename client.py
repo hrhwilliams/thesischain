@@ -15,3 +15,17 @@ def register_user(port: int, user: str, key: str):
             print(response.json())
         except ValueError:
             print(response.text)
+
+
+def get_value(port: int, key: str):
+    """Attempt to publish a user and their public key"""
+    response = req.get(f"http://localhost:{port}/api/get?key={key}", timeout=10)
+
+    try:
+        response.raise_for_status()
+        print(response.json())
+    except req.exceptions.HTTPError as _:
+        try:
+            print(response.json())
+        except ValueError:
+            print(response.text)

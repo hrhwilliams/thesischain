@@ -1,4 +1,7 @@
-use axum::{Router, routing::post};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 
 use crate::app::AppState;
 
@@ -9,6 +12,8 @@ pub struct ApiRoutes;
 
 impl ApiRoutes {
     pub fn router() -> Router<AppState> {
-        Router::new().route("/register", post(routes::register))
+        Router::new()
+            .route("/register", post(routes::register))
+            .route("/get", get(routes::get_value))
     }
 }

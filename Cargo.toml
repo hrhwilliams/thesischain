@@ -19,7 +19,7 @@ anyhow = "1.0.100"
 axum = { version = "0.8.6", features = ["ws"] }
 dotenvy = "0.15.7"
 env_filter = "0.1.4"
-libp2p = { version = "0.56.0", features = ["tokio", "dns", "kad", "mdns", "macros", "quic"] }
+libp2p = { version = "0.56.0", features = ["tokio", "dns", "kad", "mdns", "macros", "quic", "tcp", "noise", "yamux"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.48.0", features = ["full"] }
 tower = "0.5.2"
