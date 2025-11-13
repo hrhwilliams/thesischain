@@ -7,9 +7,6 @@ build = "src/build.rs"
 [lib]
 path = "src/lib.rs"
 
-[profile.release]
-symbols = "strip"
-
 [dependencies]
 base64 = { workspace = true }
 ecdsa = { workspace = true }
@@ -18,7 +15,9 @@ p256 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-time = { workspace = true }
+time = { workspace = true, features = ["serde", "formatting", "parsing"] }
+anyhow = { workspace = true }
+prost = "0.14.1"
 
 [build-dependencies]
 prost-build = { version = "0.14" }

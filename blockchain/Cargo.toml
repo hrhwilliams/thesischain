@@ -7,9 +7,6 @@ edition = "2024"
 name = "blockchain"
 path = "src/main.rs"
 
-[profile.release]
-symbols = "strip"
-
 [dependencies]
 core = { path = "../core" }
 tokio = { workspace = true, features = ["full"] }

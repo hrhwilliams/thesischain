@@ -1,3 +1,5 @@
+use crate::proto::IdentityTx;
+use anyhow::{Context, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use ecdsa::RecoveryId;
 use p256::{
@@ -112,5 +114,35 @@ impl Identity {
         .unwrap();
 
         verifying_key == self.public_key.into()
+    }
+
+    pub fn try_from_proto(tx: IdentityTx) -> anyhow::Result<Self> {
+        let timestamp =
+            OffsetDateTime::parse(&tx.timestamp, &Rfc3339).context("invalid timestamp")?;
+
+        let public_key_bytes = BASE64_STANDARD
+            .decode(tx.public_key)
+            .context("public key base64 decode failed")?;
+        let encoded_point = EncodedPoint::from_bytes(public_key_bytes)
+            .map_err(|err| anyhow!("invalid public key encoding: {err}"))?;
+        let public_key = PublicKey::from_encoded_point(&encoded_point)
+            .into_option()
+            .ok_or_else(|| anyhow!("public key is not on the curve"))?;
+
+        let signature_bytes = BASE64_STANDARD
+            .decode(tx.signature)
+            .context("signature base64 decode failed")?;
+        let signature = Signature::try_from(signature_bytes.as_slice())
+            .map_err(|_| anyhow!("invalid signature bytes"))?;
+
+        let id = if tx.recovery_id { 1 } else { 0 };
+
+        Ok(Self {
+            name: tx.identifier,
+            timestamp,
+            public_key,
+            signature,
+            id,
+        })
     }
 }

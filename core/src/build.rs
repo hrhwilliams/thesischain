@@ -9,9 +9,6 @@ fn main() {
 
     prost_build::Config::new()
         .out_dir(&out_dir)
-        .compile_protos(
-            &[proto_dir.join("dchat.proto")],
-            &[proto_dir],
-        )
+        .compile_protos(&[proto_dir.join("dchat.proto")], &[proto_dir])
         .expect("compile protobufs");
 }

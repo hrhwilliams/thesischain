@@ -1,6 +1,5 @@
-use core::identity::Identity;
-use prost::bytes::Bytes;
-use sha2::{Digest, Sha256};
+use core::{identity::Identity, proto::IdentityTx};
+use prost::{Message, bytes::Bytes};
 use std::{collections::HashMap, sync::Arc};
 
 use tendermint_abci::Application;
@@ -12,14 +11,12 @@ use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct AbciApp {
-    users: Arc<Mutex<HashMap<String, Identity>>>
+    users: Arc<Mutex<HashMap<String, Identity>>>,
 }
 
 impl AbciApp {
     pub fn new(users: Arc<Mutex<HashMap<String, Identity>>>) -> Self {
-        Self {
-            users
-        }
+        Self { users }
     }
 }
 
@@ -27,23 +24,28 @@ impl Application for AbciApp {
     fn check_tx(&self, request: RequestCheckTx) -> ResponseCheckTx {
         let mut response = ResponseCheckTx::default();
 
-        match serde_json::from_slice::<Identity>(&request.tx) {
-            Ok(identity) => {
-                // Non-interactive proof-of-possession
-                if identity.verify() {
-                    response.code = 0; // OK
+        let mut tx_bytes: &[u8] = request.tx.as_ref();
+        match IdentityTx::decode(&mut tx_bytes) {
+            Ok(proto_identity) => match Identity::try_from_proto(proto_identity) {
+                Ok(identity) => {
+                    if identity.verify() {
+                        response.code = 0; // OK
 
-                    // use an in-memory store
-                    let mut write = self.users.blocking_lock();
-                    write.insert(identity.name.clone(), identity);
-                } else {
-                    response.code = 1;
-                    response.log = "identity signature is invalid".into();
+                        let mut write = self.users.blocking_lock();
+                        write.insert(identity.name.clone(), identity);
+                    } else {
+                        response.code = 1;
+                        response.log = "identity signature is invalid".into();
+                    }
                 }
-            }
+                Err(err) => {
+                    response.code = 1;
+                    response.log = format!("invalid identity data: {err}");
+                }
+            },
             Err(err) => {
                 response.code = 1;
-                response.log = format!("failed to decode identity: {err}");
+                response.log = format!("failed to decode identity tx: {err}");
             }
         }
 
@@ -53,9 +55,7 @@ impl Application for AbciApp {
     fn commit(&self) -> ResponseCommit {
         println!("commit: persisting new application state...");
 
-        ResponseCommit {
-            retain_height: 0,
-        }
+        ResponseCommit { retain_height: 0 }
     }
 
     fn query(&self, request: RequestQuery) -> ResponseQuery {
@@ -81,7 +81,8 @@ impl Application for AbciApp {
             Some(identity) => {
                 response.code = 0;
                 response.key = Bytes::copy_from_slice(username.as_bytes());
-                response.value = Bytes::from(serde_json::to_vec(identity).expect("serialize identity"));
+                response.value =
+                    Bytes::from(serde_json::to_vec(identity).expect("serialize identity"));
             }
             None => {
                 response.code = 1;

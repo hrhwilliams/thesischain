@@ -2,6 +2,9 @@
 members = ["blockchain", "core", "node"]
 resolver = "3"
 
+[profile.release]
+symbols = "strip"
+
 [workspace.dependencies]
 anyhow = "1.0.100"
 axum = { version = "0.8.6", features = ["ws"] }
