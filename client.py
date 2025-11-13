@@ -19,7 +19,9 @@ def register_user(port: int, user: str, key: str):
 
 def get_value(port: int, key: str):
     """Attempt to publish a user and their public key"""
-    response = req.get(f"http://localhost:{port}/api/get?key={key}", timeout=10)
+    response = req.get(f"http://localhost:{port}/api/get", params={
+        "key": key
+    }, timeout=10)
 
     try:
         response.raise_for_status()

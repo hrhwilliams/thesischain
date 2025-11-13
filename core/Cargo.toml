@@ -1,0 +1,24 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2024"
+build = "src/build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[profile.release]
+symbols = "strip"
+
+[dependencies]
+base64 = { workspace = true }
+ecdsa = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+p256 = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true }
+
+[build-dependencies]
+prost-build = { version = "0.14" }

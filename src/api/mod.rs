@@ -3,8 +3,9 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::app::AppState;
+use crate::api::app::AppState;
 
+mod app;
 mod errors;
 mod routes;
 

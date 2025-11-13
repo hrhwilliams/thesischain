@@ -1,3 +1,2 @@
 pub mod api;
-pub mod app;
-pub mod swarm;
+pub mod node;

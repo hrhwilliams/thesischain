@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{api::errors::ApiError, app::AppState};
+use crate::api::{app::AppState, errors::ApiError};
 
 #[derive(Deserialize)]
 pub struct Register {

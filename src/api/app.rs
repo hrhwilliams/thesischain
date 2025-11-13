@@ -1,7 +1,7 @@
 use axum::{http::StatusCode, response::IntoResponse, routing::get};
 use tokio::net::TcpListener;
 
-use crate::{api::ApiRoutes, swarm::EdgeNodes};
+use crate::{api::ApiRoutes, node::EdgeNodes};
 
 #[derive(Clone)]
 pub struct AppState {
