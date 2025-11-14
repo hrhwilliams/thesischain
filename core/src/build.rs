@@ -1,5 +1,9 @@
 use std::{env, fs, path::PathBuf};
 
+#[cfg(windows)]
+fn main() {}
+
+#[cfg(macos)]
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let proto_dir = manifest_dir.join("proto");
