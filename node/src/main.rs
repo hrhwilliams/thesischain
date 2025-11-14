@@ -61,6 +61,7 @@ async fn handle_server(port: &str) -> Result<()> {
 
     let client_id_key: Curve25519PublicKey;
     let client_otk: Curve25519PublicKey;
+    let mut inbound_session: Session;
 
 
     stream_read.read(&mut buffer).await?;
@@ -100,6 +101,7 @@ async fn handle_server(port: &str) -> Result<()> {
         Message::Message(m) => match m {
             OlmMessage::PreKey(m) => {
                 let result = account.create_inbound_session(client_id_key, &m)?;
+                inbound_session = result.session;
                 println!("{}", String::from_utf8_lossy(&result.plaintext))
             }
             _ => panic!("Client sent normal message"),
@@ -108,6 +110,21 @@ async fn handle_server(port: &str) -> Result<()> {
     }
 
     stream_write.write(&Message::message(&mut session, "Hello, client!").bincode()?).await?;
+
+    stream_read.read(&mut buffer).await?;
+    let (message, _): (Message, usize) =
+        bincode::serde::borrow_decode_from_slice(&buffer, bincode::config::standard())?;
+
+    match message {
+        Message::Message(m) => {
+            let result = inbound_session.decrypt(&m)?;
+            println!("{}", String::from_utf8_lossy(&result));
+        },
+        _ => panic!("Client didn't send message"),
+    }
+
+    stream_write.write(&Message::message(&mut session, "Hello, client, part 2!").bincode()?).await?;
+
 
     // loop {
     //     tokio::select! {
@@ -185,6 +202,7 @@ async fn handle_client(port: &str) -> Result<()> {
 
     let server_id_key: Curve25519PublicKey;
     let server_otk: Curve25519PublicKey;
+    let mut inbound_session: Session;
 
 
     stream_write.write(&Message::identity_key(&account).bincode()?).await?;
@@ -226,9 +244,24 @@ async fn handle_client(port: &str) -> Result<()> {
         Message::Message(m) => match m {
             OlmMessage::PreKey(m) => {
                 let result = account.create_inbound_session(server_id_key, &m)?;
+                inbound_session = result.session;
                 println!("{}", String::from_utf8_lossy(&result.plaintext))
             }
             _ => panic!("Server sent normal message"),
+        },
+        _ => panic!("Server didn't send message"),
+    }
+
+    stream_write.write(&Message::message(&mut session, "Hello, server; part 2!").bincode()?).await?;
+
+    stream_read.read(&mut buffer).await?;
+    let (message, _): (Message, usize) =
+        bincode::serde::borrow_decode_from_slice(&buffer, bincode::config::standard())?;
+
+    match message {
+        Message::Message(m) => {
+            let result = inbound_session.decrypt(&m)?;
+            println!("{}", String::from_utf8_lossy(&result));
         },
         _ => panic!("Server didn't send message"),
     }
