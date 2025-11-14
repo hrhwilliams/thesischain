@@ -1,11 +1,14 @@
 use std::{env, io::Write};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    net::{TcpListener, TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}},
+    net::{
+        TcpListener, TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    },
 };
 use vodozemac::{
     Curve25519PublicKey,
@@ -108,7 +111,11 @@ async fn input_loop(
     Ok(())
 }
 
-async fn recv_initial_message(account: &mut Account, id_key: Curve25519PublicKey, stream_read: &mut OwnedReadHalf) -> Result<InboundCreationResult> {
+async fn recv_initial_message(
+    account: &mut Account,
+    id_key: Curve25519PublicKey,
+    stream_read: &mut OwnedReadHalf,
+) -> Result<InboundCreationResult> {
     let mut buffer = vec![0u8; 2048];
 
     stream_read.read(&mut buffer).await?;
@@ -154,7 +161,9 @@ async fn handle_server(port: &str) -> Result<()> {
     // let client_id_key = exchange_identity_keys(&account).await?;
     // let client_otk = exchange_one_time_keys(&account).await?;
 
-    stream_write.write(&Message::identity_key(&account).bincode()?).await?;
+    stream_write
+        .write(&Message::identity_key(&account).bincode()?)
+        .await?;
 
     stream_read.read(&mut buffer).await?;
     let (message, _): (Message, usize) =
@@ -167,17 +176,31 @@ async fn handle_server(port: &str) -> Result<()> {
         _ => panic!("Client didn't send OTK key"),
     }
 
-    stream_write.write(&Message::one_time_key(&account).bincode()?).await?;
+    stream_write
+        .write(&Message::one_time_key(&account).bincode()?)
+        .await?;
 
     let mut session =
         account.create_outbound_session(SessionConfig::version_2(), client_id_key, client_otk);
 
-    let inbound_session = recv_initial_message(&mut account, client_id_key, &mut stream_read).await?.session;
+    let inbound_session = recv_initial_message(&mut account, client_id_key, &mut stream_read)
+        .await?
+        .session;
 
-    stream_write.write(&Message::message(&mut session, "Hello, client!").bincode()?).await?;
+    stream_write
+        .write(&Message::message(&mut session, "Hello, client!").bincode()?)
+        .await?;
 
     println!("Server established");
-    input_loop(&mut account, session, inbound_session, stream_read, stream_write, client_id_key).await?;
+    input_loop(
+        &mut account,
+        session,
+        inbound_session,
+        stream_read,
+        stream_write,
+        client_id_key,
+    )
+    .await?;
 
     Ok(())
 
@@ -253,8 +276,9 @@ async fn handle_client(port: &str) -> Result<()> {
     let server_id_key: Curve25519PublicKey;
     let server_otk: Curve25519PublicKey;
 
-
-    stream_write.write(&Message::identity_key(&account).bincode()?).await?;
+    stream_write
+        .write(&Message::identity_key(&account).bincode()?)
+        .await?;
 
     stream_read.read(&mut buffer).await?;
     let (message, _): (Message, usize) =
@@ -267,7 +291,9 @@ async fn handle_client(port: &str) -> Result<()> {
         _ => panic!("Server didn't send ID key"),
     }
 
-    stream_write.write(&Message::one_time_key(&account).bincode()?).await?;
+    stream_write
+        .write(&Message::one_time_key(&account).bincode()?)
+        .await?;
 
     stream_read.read(&mut buffer).await?;
     let (message, _): (Message, usize) =
@@ -283,13 +309,25 @@ async fn handle_client(port: &str) -> Result<()> {
     let mut session =
         account.create_outbound_session(SessionConfig::version_2(), server_id_key, server_otk);
 
-    stream_write.write(&Message::message(&mut session, "Hello, server!").bincode()?).await?;
+    stream_write
+        .write(&Message::message(&mut session, "Hello, server!").bincode()?)
+        .await?;
 
-    let inbound_session = recv_initial_message(&mut account, server_id_key, &mut stream_read).await?.session;
+    let inbound_session = recv_initial_message(&mut account, server_id_key, &mut stream_read)
+        .await?
+        .session;
 
     println!("Client established");
 
-    input_loop(&mut account, session, inbound_session, stream_read, stream_write, server_id_key).await?;
+    input_loop(
+        &mut account,
+        session,
+        inbound_session,
+        stream_read,
+        stream_write,
+        server_id_key,
+    )
+    .await?;
 
     // stream_read.read(&mut buffer).await?;
     // let (message, _): (Message, usize) =
