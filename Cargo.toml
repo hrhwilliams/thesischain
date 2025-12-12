@@ -15,6 +15,11 @@ debug = true
 [profile.release]
 symbols = "strip"
 
+[lints.clippy]
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
 [workspace.dependencies]
 anyhow = "1.0.100"
 axum = { version = "0.8.6", features = ["ws"] }
