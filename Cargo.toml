@@ -2,6 +2,16 @@
 members = ["blockchain", "core", "node"]
 resolver = "3"
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true
+
 [profile.release]
 symbols = "strip"
 
