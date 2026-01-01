@@ -1,15 +1,19 @@
 mod app;
 mod dm;
 mod endpoints;
+mod models;
+mod schema;
 mod session;
 mod state;
-mod user;
 mod ws;
 
 pub use app::*;
 pub use dm::*;
 pub use endpoints::*;
+pub use models::*;
+pub use schema::*;
 pub use session::*;
 pub use state::*;
-pub use user::*;
 pub use ws::*;
+
+mod extractors;

@@ -9,8 +9,8 @@
     <input type="submit" value="Send message request"></input>
 </form>
 <ul>
-    {% for message in messages %}
-    <li><a href="/dm/{{ message.id }}">{{ message.user }}</a></li>
+    {% for room in rooms %}
+    <li><a href="/dm/{{ room.id }}">{{ room.id }}</a></li>
     {% endfor %}
 </ul>
 {% endblock %}

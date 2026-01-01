@@ -9,46 +9,50 @@ use axum_extra::extract::{
     CookieJar,
     cookie::{Cookie, Expiration, SameSite},
 };
+use futures::TryFutureExt;
 use serde::Deserialize;
-use uuid::Uuid;
 
-use crate::{AppState, DirectMessageLink, RoomId, Session, UserName, handle_socket};
+use crate::{AppState, LoginError, RegistrationError, Room, User};
 
 #[derive(Template)]
 #[template(path = "index.html")]
-struct Index<'a> {
-    name: Option<&'a UserName>,
+struct Index {
+    name: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "login.html")]
-struct Login<'a> {
-    name: Option<&'a UserName>,
+struct Login {
+    name: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "register.html")]
-struct Register<'a> {
-    name: Option<&'a UserName>,
+struct Register {
+    name: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "messages.html")]
-struct Messages<'a> {
-    name: Option<&'a UserName>,
-    messages: Vec<DirectMessageLink>,
+struct Messages {
+    name: Option<String>,
+    rooms: Vec<Room>,
 }
 
 #[derive(Template)]
 #[template(path = "dm.html")]
-struct DirectMessage<'a> {
-    name: Option<&'a UserName>,
+struct DirectMessage {
+    name: Option<String>,
 }
 
 #[tracing::instrument]
-pub async fn index(session: Option<Session>) -> Result<impl IntoResponse, StatusCode> {
-    let index = Index {
-        name: session.as_ref().map(|s| s.username()),
+pub async fn index(user: Option<User>) -> Result<impl IntoResponse, StatusCode> {
+    let index = if let Some(user) = user {
+        Index {
+            name: Some(user.username),
+        }
+    } else {
+        Index { name: None }
     };
 
     Ok(Html(
@@ -60,14 +64,14 @@ pub async fn index(session: Option<Session>) -> Result<impl IntoResponse, Status
 
 #[derive(Deserialize)]
 pub struct LoginForm {
-    pub username: UserName,
+    pub username: String,
     pub password: String,
 }
 
 #[tracing::instrument]
-pub async fn login_form(session: Option<Session>) -> Result<Response, StatusCode> {
-    if session.is_some() {
-        tracing::info!("Session found; redirecting");
+pub async fn display_login_form(user: Option<User>) -> Result<Response, StatusCode> {
+    if user.is_some() {
+        tracing::info!("User already logged in found; redirecting");
         Ok(Redirect::to("/").into_response())
     } else {
         let login = Login { name: None };
@@ -84,38 +88,67 @@ pub async fn login_form(session: Option<Session>) -> Result<Response, StatusCode
 #[tracing::instrument(skip(app_state))]
 pub async fn login(
     State(app_state): State<AppState>,
+    user: Option<User>,
     jar: CookieJar,
     Form(LoginForm { username, password }): Form<LoginForm>,
 ) -> Result<Response, StatusCode> {
-    if let Some(session) = app_state.create_session(username, &password).await {
-        tracing::info!("Logging user in with session id {:?}", session.session_id());
-        let cookie = Cookie::build(("Session", session.session_id().0))
-            .expires(Expiration::Session)
-            .build();
-
-        Ok((jar.add(cookie), Redirect::to("/")).into_response())
+    if user.is_some() {
+        tracing::info!("User already logged in found; redirecting");
+        Ok(Redirect::to("/").into_response())
     } else {
-        tracing::info!("Invalid password or username");
-        Ok(Redirect::to("/login").into_response())
+        match app_state
+            .validate_password_and_get_user(username, password)
+            .await
+        {
+            Ok(user) => {
+                let session = app_state
+                    .create_session_for_user(user)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+                let cookie = Cookie::build(("Session", session.id.to_string()))
+                    .expires(Expiration::Session)
+                    .same_site(SameSite::Strict)
+                    .build();
+                Ok((jar.add(cookie), Redirect::to("/")).into_response())
+            }
+            Err(LoginError::UserNotFound) | Err(LoginError::InvalidPassword) => {
+                Err(StatusCode::UNAUTHORIZED)
+            }
+            Err(LoginError::System(e)) => {
+                tracing::error!("{:?}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 }
 
-#[tracing::instrument]
-pub async fn logout(jar: CookieJar) -> Result<impl IntoResponse, StatusCode> {
+#[tracing::instrument(skip(app_state))]
+pub async fn logout(
+    State(app_state): State<AppState>,
+    user: Option<User>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, StatusCode> {
     tracing::info!("Logging user out");
+    let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    app_state
+        .delete_user_session(user)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok((jar.remove(Cookie::from("Session")), Redirect::to("/")))
 }
 
 #[derive(Deserialize)]
 pub struct SignUp {
-    pub username: UserName,
+    pub username: String,
     pub password: String,
-    pub confirm: String,
+    pub confirmation: String,
 }
 
 #[tracing::instrument]
-pub async fn register_form(session: Option<Session>) -> Result<impl IntoResponse, StatusCode> {
-    if session.is_some() {
+pub async fn register_form(user: Option<User>) -> Result<impl IntoResponse, StatusCode> {
+    if user.is_some() {
         tracing::info!("Session found; redirecting");
         Ok(Redirect::to("/").into_response())
     } else {
@@ -133,103 +166,117 @@ pub async fn register_form(session: Option<Session>) -> Result<impl IntoResponse
 #[tracing::instrument(skip(app_state))]
 pub async fn register(
     State(app_state): State<AppState>,
+    jar: CookieJar,
     Form(SignUp {
         username,
         password,
-        confirm,
+        confirmation,
     }): Form<SignUp>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let success = app_state
-        .register_user(username, &password, &confirm)
+    match app_state
+        .register_user(username, password, confirmation)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    {
+        Ok(user) => {
+            let session = app_state
+                .create_session_for_user(user)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if success {
-        tracing::info!("User registered");
-        Ok(Redirect::to("/login"))
-    } else {
-        tracing::info!("Failed to register user");
-        Ok(Redirect::to("/register"))
+            let cookie = Cookie::build(("Session", session.id.to_string()))
+                .expires(Expiration::Session)
+                .same_site(SameSite::Strict)
+                .build();
+            Ok((jar.add(cookie), Redirect::to("/")).into_response())
+        }
+        Err(RegistrationError::InvalidUsername)
+        | Err(RegistrationError::InvalidPassword)
+        | Err(RegistrationError::PasswordMismatch) => Err(StatusCode::BAD_REQUEST),
+        Err(RegistrationError::UsernameTaken) => Err(StatusCode::CONFLICT),
+        Err(RegistrationError::System(e)) => {
+            tracing::error!("{:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
 pub async fn direct_messages(
     State(app_state): State<AppState>,
-    session: Option<Session>,
+    user: Option<User>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    if let Some(session) = session {
-        let dms = app_state.get_direct_messages(&session).await.unwrap();
+    let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
+    let username = user.username.clone();
 
-        let messages = Messages {
-            name: Some(session.username()),
-            messages: dms,
-        };
+    let users_rooms = app_state
+        .get_rooms(user)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        Ok(Html(
-            messages
-                .render()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        ))
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
+    let messages = Messages {
+        name: Some(username),
+        rooms: users_rooms,
+    };
+
+    Ok(Html(
+        messages
+            .render()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+    ))
 }
 
-#[derive(Deserialize)]
-pub struct MessageRequest {
-    pub recipient: UserName,
-}
+// #[derive(Deserialize)]
+// pub struct MessageRequest {
+//     pub recipient: UserName,
+// }
 
-pub async fn message_request(
-    State(app_state): State<AppState>,
-    session: Option<Session>,
-    Form(MessageRequest { recipient }): Form<MessageRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if let Some(session) = session {
-        app_state
-            .create_dm(&session, recipient)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        Ok(Redirect::to("/dms").into_response())
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
+// pub async fn message_request(
+//     State(app_state): State<AppState>,
+//     user: Option<User>,
+//     Form(MessageRequest { recipient }): Form<MessageRequest>,
+// ) -> Result<impl IntoResponse, StatusCode> {
+//     if let Some(session) = session {
+//         app_state
+//             .create_dm(&session, recipient)
+//             .await
+//             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+//         Ok(Redirect::to("/dms").into_response())
+//     } else {
+//         Err(StatusCode::UNAUTHORIZED)
+//     }
+// }
 
-#[derive(Deserialize)]
-pub struct SessionParams {
-    pub room_id: RoomId,
-}
+// #[derive(Deserialize)]
+// pub struct SessionParams {
+//     pub room_id: RoomId,
+// }
 
-pub async fn direct_message(
-    State(app_state): State<AppState>,
-    Path(SessionParams { room_id }): Path<SessionParams>,
-    session: Option<Session>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if let Some(session) = session {
-        let dm = DirectMessage {
-            name: Some(session.username()),
-        };
+// pub async fn direct_message(
+//     State(app_state): State<AppState>,
+//     Path(SessionParams { room_id }): Path<SessionParams>,
+//     user: Option<User>,
+// ) -> Result<impl IntoResponse, StatusCode> {
+//     if let Some(session) = session {
+//         let dm = DirectMessage {
+//             name: Some(session.username()),
+//         };
 
-        Ok(Html(
-            dm
-                .render()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        ))
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
+//         Ok(Html(
+//             dm.render().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+//         ))
+//     } else {
+//         Err(StatusCode::UNAUTHORIZED)
+//     }
+// }
 
-pub async fn direct_message_ws(
-    State(app_state): State<AppState>,
-    Path(SessionParams { room_id }): Path<SessionParams>,
-    session: Option<Session>,
-    ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, StatusCode> {
-    if let Some(session) = session {
-        Ok(ws.on_upgrade(move |socket| handle_socket(socket, session, room_id, app_state)))
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
+// pub async fn direct_message_ws(
+//     State(app_state): State<AppState>,
+//     Path(SessionParams { room_id }): Path<SessionParams>,
+//     user: Option<User>,
+//     ws: WebSocketUpgrade,
+// ) -> Result<impl IntoResponse, StatusCode> {
+//     if let Some(session) = session {
+//         Ok(ws.on_upgrade(move |socket| handle_socket(socket, session, room_id, app_state)))
+//     } else {
+//         Err(StatusCode::UNAUTHORIZED)
+//     }
+// }

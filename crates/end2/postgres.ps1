@@ -1,0 +1,1 @@
+docker run --name end2-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 -d postgres:18-alpine
