@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>{% block title %}{% endblock %}</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                margin-top: 5%;
+                margin-left: 10%;
+                margin-right: 10%;
+            }
+
+            header {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+            }
+
+            header>h1 {
+                margin: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>{% block title %}{% endblock %}</h1>
+            <nav>
+            {% if let Some(name) = name %}
+                Logged in as {{ name }} | <a href="/">Home</a> | <a href="/logout">Log Out</a>
+            {% else %}
+                <a href="/">Home</a> | <a href="/login">Log In</a> | <a href="/register">Register</a>
+            {% endif %}
+            </nav>
+        </header>
+        <hr>
+        <div id="content">{% block content %}{% endblock %}</div>
+    </body>
+</html>

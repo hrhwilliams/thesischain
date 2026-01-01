@@ -1,0 +1,34 @@
+use axum::routing::any;
+use axum::routing::get;
+use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
+
+use crate::AppState;
+use crate::endpoints;
+
+pub struct App {
+    router: axum::Router,
+}
+
+impl App {
+    pub fn new() -> Self {
+        let state = AppState::default();
+        let router = axum::Router::new()
+            .route("/", get(endpoints::index))
+            .route("/login", get(endpoints::login_form).post(endpoints::login))
+            .route("/logout", get(endpoints::logout))
+            .route(
+                "/register",
+                get(endpoints::register_form).post(endpoints::register),
+            )
+            .route("/session/{session_id}", any(endpoints::session))
+            .layer(TraceLayer::new_for_http())
+            .with_state(state);
+
+        Self { router }
+    }
+
+    pub async fn run(self, listener: TcpListener) -> Result<(), std::io::Error> {
+        axum::serve(listener, self.router).await
+    }
+}

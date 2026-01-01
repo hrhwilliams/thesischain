@@ -1,0 +1,16 @@
+[package]
+name = "relay"
+version = "0.0.0"
+edition.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+axum = "0.8.8"
+defs.workspace = true
+dotenvy.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json = "1.0.148"
+tokio.workspace = true

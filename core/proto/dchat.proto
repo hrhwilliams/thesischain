@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-message IdentityTx {
-    string identifier = 1;
-    string timestamp = 2;
-    string public_key = 3;
-    string signature = 4;
-    bool recovery_id = 5;
-}
