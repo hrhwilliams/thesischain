@@ -12,36 +12,43 @@ use axum_extra::extract::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{AppState, Session, UserName, handle_socket};
+use crate::{AppState, DirectMessageLink, RoomId, Session, UserName, handle_socket};
 
 #[derive(Template)]
 #[template(path = "index.html")]
-struct Index {
-    name: Option<UserName>,
+struct Index<'a> {
+    name: Option<&'a UserName>,
 }
 
 #[derive(Template)]
 #[template(path = "login.html")]
-struct Login {
-    name: Option<UserName>,
+struct Login<'a> {
+    name: Option<&'a UserName>,
 }
 
 #[derive(Template)]
 #[template(path = "register.html")]
-struct Register {
-    name: Option<UserName>,
+struct Register<'a> {
+    name: Option<&'a UserName>,
+}
+
+#[derive(Template)]
+#[template(path = "messages.html")]
+struct Messages<'a> {
+    name: Option<&'a UserName>,
+    messages: Vec<DirectMessageLink>,
+}
+
+#[derive(Template)]
+#[template(path = "dm.html")]
+struct DirectMessage<'a> {
+    name: Option<&'a UserName>,
 }
 
 #[tracing::instrument]
 pub async fn index(session: Option<Session>) -> Result<impl IntoResponse, StatusCode> {
-    let index = if let Some(session) = session {
-        tracing::info!("Session found");
-        Index {
-            name: Some(session.user_info.username),
-        }
-    } else {
-        tracing::info!("No session");
-        Index { name: None }
+    let index = Index {
+        name: session.as_ref().map(|s| s.username()),
     };
 
     Ok(Html(
@@ -146,15 +153,83 @@ pub async fn register(
     }
 }
 
-#[derive(Deserialize)]
-pub struct SessionParams {
-    pub session_id: Uuid,
+pub async fn direct_messages(
+    State(app_state): State<AppState>,
+    session: Option<Session>,
+) -> Result<impl IntoResponse, StatusCode> {
+    if let Some(session) = session {
+        let dms = app_state.get_direct_messages(&session).await.unwrap();
+
+        let messages = Messages {
+            name: Some(session.username()),
+            messages: dms,
+        };
+
+        Ok(Html(
+            messages
+                .render()
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        ))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
-pub async fn session(
+#[derive(Deserialize)]
+pub struct MessageRequest {
+    pub recipient: UserName,
+}
+
+pub async fn message_request(
     State(app_state): State<AppState>,
-    Path(SessionParams { session_id }): Path<SessionParams>,
+    session: Option<Session>,
+    Form(MessageRequest { recipient }): Form<MessageRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    if let Some(session) = session {
+        app_state
+            .create_dm(&session, recipient)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Ok(Redirect::to("/dms").into_response())
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SessionParams {
+    pub room_id: RoomId,
+}
+
+pub async fn direct_message(
+    State(app_state): State<AppState>,
+    Path(SessionParams { room_id }): Path<SessionParams>,
+    session: Option<Session>,
+) -> Result<impl IntoResponse, StatusCode> {
+    if let Some(session) = session {
+        let dm = DirectMessage {
+            name: Some(session.username()),
+        };
+
+        Ok(Html(
+            dm
+                .render()
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        ))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn direct_message_ws(
+    State(app_state): State<AppState>,
+    Path(SessionParams { room_id }): Path<SessionParams>,
+    session: Option<Session>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, session_id, app_state)))
+    if let Some(session) = session {
+        Ok(ws.on_upgrade(move |socket| handle_socket(socket, session, room_id, app_state)))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }

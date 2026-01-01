@@ -1,9 +1,9 @@
 use argon2::password_hash::PasswordHashString;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Eq, Serialize)]
 pub struct UserName(String);
 
 impl UserName {
@@ -20,7 +20,6 @@ impl From<String> for UserName {
 
 impl fmt::Display for UserName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Adjust 'self.0' if your struct has named fields (e.g., self.username)
         write!(f, "{}", self.0)
     }
 }

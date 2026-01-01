@@ -20,13 +20,14 @@
                 margin: 0;
             }
         </style>
+        {% block head %}{% endblock %}
     </head>
     <body>
         <header>
             <h1>{% block title %}{% endblock %}</h1>
             <nav>
             {% if let Some(name) = name %}
-                Logged in as {{ name }} | <a href="/">Home</a> | <a href="/logout">Log Out</a>
+                Logged in as {{ name }} | <a href="/">Home</a> | <a href="/dms">Direct Messages</a> | <a href="/logout">Log Out</a>
             {% else %}
                 <a href="/">Home</a> | <a href="/login">Log In</a> | <a href="/register">Register</a>
             {% endif %}

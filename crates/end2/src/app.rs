@@ -1,5 +1,6 @@
 use axum::routing::any;
 use axum::routing::get;
+use axum::routing::post;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
@@ -21,7 +22,10 @@ impl App {
                 "/register",
                 get(endpoints::register_form).post(endpoints::register),
             )
-            .route("/session/{session_id}", any(endpoints::session))
+            .route("/dms", get(endpoints::direct_messages))
+            .route("/dm", post(endpoints::message_request))
+            .route("/dm/{room_id}", get(endpoints::direct_message))
+            .route("/dm/ws/{room_id}", any(endpoints::direct_message_ws))
             .layer(TraceLayer::new_for_http())
             .with_state(state);
 

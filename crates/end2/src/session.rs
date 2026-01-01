@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use uuid::Uuid;
 
-use crate::{AppState, UserInfo};
+use crate::{AppState, UserInfo, UserName};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SessionId(pub String);
@@ -55,6 +55,10 @@ impl Session {
 
     pub fn session_id(&self) -> SessionId {
         self.session_id.clone()
+    }
+
+    pub fn username(&self) -> &UserName {
+        &self.user_info.username
     }
 }
 

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Direct Messages{% endblock %}
+{% block content %}
+<form action="/dm" method="post">
+    <p>
+        <label for="username">DM</label><br>
+        <input type="text" id="recipient" name="recipient" required></input>
+    </p>
+    <input type="submit" value="Send message request"></input>
+</form>
+<ul>
+    {% for message in messages %}
+    <li><a href="/dm/{{ message.id }}">{{ message.user }}</a></li>
+    {% endfor %}
+</ul>
+{% endblock %}

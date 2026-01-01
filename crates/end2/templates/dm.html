@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="chat-log"></div>
+<form id="chat-form">
+    <input type="text" id="message-input" autocomplete="off" />
+    <button type="submit">Send</button>
+</form>
+
+<script>
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const sessionId = window.location.pathname.split('/').pop();
+    const ws = new WebSocket(`${protocol}//${window.location.host}/dm/ws/${sessionId}`);
+
+    const chatLog = document.getElementById('chat-log');
+    const chatForm = document.getElementById('chat-form');
+    const messageInput = document.getElementById('message-input');
+
+    ws.onmessage = (event) => {
+        const msgDiv = document.createElement('div');
+        msgDiv.textContent = event.data;
+        chatLog.appendChild(msgDiv);
+
+        chatLog.scrollTop = chatLog.scrollHeight;
+        console.log(`got message ${event.data}`)
+    };
+
+    chatForm.addEventListener('submit', function(e) {
+        e.preventDefault(); 
+
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+
+        if (text && ws.readyState === WebSocket.OPEN) {
+            const payload = JSON.stringify({ user: "me", content: text });
+            ws.send(payload);
+            input.value = '';
+            console.log(`sent message ${payload}`)
+        }
+    });
+</script>
+{% endblock %}
