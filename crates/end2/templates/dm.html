@@ -31,7 +31,7 @@
         const text = input.value.trim();
 
         if (text && ws.readyState === WebSocket.OPEN) {
-            const payload = JSON.stringify({ user: "me", content: text });
+            const payload = JSON.stringify({ content: text });
             ws.send(payload);
             input.value = '';
             console.log(`sent message ${payload}`)

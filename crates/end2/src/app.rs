@@ -29,9 +29,9 @@ impl App {
                 get(endpoints::register_form).post(endpoints::register),
             )
             .route("/dms", get(endpoints::direct_messages))
-            // .route("/dm", post(endpoints::message_request))
-            // .route("/dm/{room_id}", get(endpoints::direct_message))
-            // .route("/dm/ws/{room_id}", any(endpoints::direct_message_ws))
+            .route("/dm", post(endpoints::create_room))
+            .route("/dm/{room_id}", get(endpoints::direct_message))
+            .route("/dm/ws/{room_id}", any(endpoints::direct_message_ws))
             .layer(TraceLayer::new_for_http())
             .with_state(state);
 

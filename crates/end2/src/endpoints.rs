@@ -11,8 +11,9 @@ use axum_extra::extract::{
 };
 use futures::TryFutureExt;
 use serde::Deserialize;
+use uuid::Uuid;
 
-use crate::{AppState, LoginError, RegistrationError, Room, User};
+use crate::{AppState, LoginError, RegistrationError, Room, User, handle_socket};
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -126,11 +127,10 @@ pub async fn login(
 #[tracing::instrument(skip(app_state))]
 pub async fn logout(
     State(app_state): State<AppState>,
-    user: Option<User>,
+    user: User,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, StatusCode> {
     tracing::info!("Logging user out");
-    let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
     app_state
         .delete_user_session(user)
@@ -200,11 +200,11 @@ pub async fn register(
     }
 }
 
+#[tracing::instrument(skip(app_state))]
 pub async fn direct_messages(
     State(app_state): State<AppState>,
-    user: Option<User>,
+    user: User,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
     let username = user.username.clone();
 
     let users_rooms = app_state
@@ -224,59 +224,68 @@ pub async fn direct_messages(
     ))
 }
 
-// #[derive(Deserialize)]
-// pub struct MessageRequest {
-//     pub recipient: UserName,
-// }
+#[derive(Deserialize)]
+pub struct CreateDm {
+    pub recipient: String,
+}
 
-// pub async fn message_request(
-//     State(app_state): State<AppState>,
-//     user: Option<User>,
-//     Form(MessageRequest { recipient }): Form<MessageRequest>,
-// ) -> Result<impl IntoResponse, StatusCode> {
-//     if let Some(session) = session {
-//         app_state
-//             .create_dm(&session, recipient)
-//             .await
-//             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-//         Ok(Redirect::to("/dms").into_response())
-//     } else {
-//         Err(StatusCode::UNAUTHORIZED)
-//     }
-// }
+#[tracing::instrument(skip(app_state))]
+pub async fn create_room(
+    State(app_state): State<AppState>,
+    user: User,
+    Form(CreateDm { recipient }): Form<CreateDm>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let recipient = app_state
+        .get_user_by_username(recipient)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let room = app_state
+        .create_room(user)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    app_state
+        .invite_to_room(recipient, &room)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-// #[derive(Deserialize)]
-// pub struct SessionParams {
-//     pub room_id: RoomId,
-// }
+    Ok(Redirect::to(&format!("/dm/{}", room.id)).into_response())
+}
 
-// pub async fn direct_message(
-//     State(app_state): State<AppState>,
-//     Path(SessionParams { room_id }): Path<SessionParams>,
-//     user: Option<User>,
-// ) -> Result<impl IntoResponse, StatusCode> {
-//     if let Some(session) = session {
-//         let dm = DirectMessage {
-//             name: Some(session.username()),
-//         };
+#[derive(Deserialize)]
+pub struct SessionParams {
+    pub room_id: Uuid,
+}
 
-//         Ok(Html(
-//             dm.render().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-//         ))
-//     } else {
-//         Err(StatusCode::UNAUTHORIZED)
-//     }
-// }
+#[tracing::instrument(skip(app_state))]
+pub async fn direct_message(
+    State(app_state): State<AppState>,
+    Path(SessionParams { room_id }): Path<SessionParams>,
+    user: User,
+) -> Result<impl IntoResponse, StatusCode> {
+    if !app_state
+        .user_has_access(&user, room_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        Err(StatusCode::NOT_FOUND)
+    } else {
+        let dm = DirectMessage {
+            name: Some(user.username),
+        };
 
-// pub async fn direct_message_ws(
-//     State(app_state): State<AppState>,
-//     Path(SessionParams { room_id }): Path<SessionParams>,
-//     user: Option<User>,
-//     ws: WebSocketUpgrade,
-// ) -> Result<impl IntoResponse, StatusCode> {
-//     if let Some(session) = session {
-//         Ok(ws.on_upgrade(move |socket| handle_socket(socket, session, room_id, app_state)))
-//     } else {
-//         Err(StatusCode::UNAUTHORIZED)
-//     }
-// }
+        Ok(Html(
+            dm.render().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        ))
+    }
+}
+
+#[tracing::instrument(skip(app_state, ws))]
+pub async fn direct_message_ws(
+    State(app_state): State<AppState>,
+    Path(SessionParams { room_id }): Path<SessionParams>,
+    user: User,
+    ws: WebSocketUpgrade,
+) -> Result<impl IntoResponse, StatusCode> {
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, user, room_id, app_state)))
+}

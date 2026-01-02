@@ -1,53 +1,75 @@
-// use axum::extract::ws::{Message, WebSocket};
-// use futures::{SinkExt, StreamExt};
+use axum::extract::ws::{Message, WebSocket};
+use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
+use uuid::Uuid;
 
-// use crate::{AppState, ChatMessage, RoomId, Session};
+use crate::{AppState, NewChatMessage, User};
 
-// pub async fn handle_socket(
-//     socket: WebSocket,
-//     session: Session,
-//     room_id: RoomId,
-//     app_state: AppState,
-// ) {
-//     let (mut sender, mut receiver) = socket.split();
+#[derive(Deserialize)]
+struct RecvChatMessage {
+    pub content: String,
+}
 
-//     let room = app_state.get_room(room_id).await;
-//     let history = room.history().await;
-//     let mut rx = room.subscribe();
+#[tracing::instrument(skip(socket, app_state))]
+pub async fn handle_socket(socket: WebSocket, user: User, room_id: Uuid, app_state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
 
-//     let me_send = session.username().clone();
-//     let me_recv = session.username().clone();
+    let tx = app_state.get_channel(room_id).await;
+    let mut rx = tx.subscribe();
 
-//     let mut send_task = tokio::spawn(async move {
-//         for message in history {
-//             let json = serde_json::to_string(&message).expect("message not valid JSON");
-//             sender.send(Message::Text(json.into())).await;
-//         }
-//         while let Ok(msg) = rx.recv().await {
-//             // if msg.user != me_send {
-//             let json = serde_json::to_string(&msg).expect("message not valid JSON");
-//             sender.send(Message::Text(json.into())).await;
-//             // }
-//         }
-//     });
+    let app_state_recv = app_state.clone();
 
-//     let mut recv_task = tokio::spawn(async move {
-//         while let Some(Ok(Message::Text(text))) = receiver.next().await {
-//             if let Ok(mut chat_msg) = serde_json::from_str::<ChatMessage>(&text) {
-//                 chat_msg.user = me_recv.clone();
+    let mut send_task = tokio::spawn(async move {
+        if let Ok(history) = app_state.get_room_history(room_id).await {
+            for msg in history {
+                if let Ok(json) = serde_json::to_string(&msg) {
+                    let msg = Message::Text(json.into());
+                    let dbg_msg = msg.clone();
+                    if sender.send(msg).await.is_err() {
+                        tracing::error!("bad message {:?}", dbg_msg);
+                        return;
+                    }
+                }
+            }
+        }
 
-//                 {
-//                     let mut room_guard = room.history.write().await;
-//                     room_guard.push(chat_msg.clone());
-//                 }
+        while let Ok(chat_msg) = rx.recv().await {
+            tracing::debug!("got message {:?}", chat_msg);
+            if let Ok(json) = serde_json::to_string(&chat_msg) {
+                let msg = Message::Text(json.into());
+                let dbg_msg = msg.clone();
+                if sender.send(msg).await.is_err() {
+                    tracing::error!("bad message {:?}", dbg_msg);
+                    break;
+                }
+            }
+        }
+    });
 
-//                 let _ = room.send(chat_msg);
-//             }
-//         }
-//     });
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(text))) = receiver.next().await {
+            tracing::debug!("got message {}", text.to_string());
+            if let Ok(incoming) = serde_json::from_str::<RecvChatMessage>(&text) {
+                let new_chat_message = NewChatMessage {
+                    room_id,
+                    author: user.id,
+                    content: incoming.content
+                };
 
-//     tokio::select! {
-//         _ = (&mut send_task) => recv_task.abort(),
-//         _ = (&mut recv_task) => send_task.abort(),
-//     };
-// }
+                match app_state_recv.save_message(new_chat_message).await {
+                    Ok(saved_msg) => {
+                        let _ = tx.send(saved_msg);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to save message: {:?}", e);
+                    }
+                }
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
+}

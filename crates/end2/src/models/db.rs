@@ -1,4 +1,5 @@
 use diesel::prelude::*;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Queryable, Selectable)]
@@ -18,7 +19,7 @@ pub struct NewUser<'a> {
     pub pass: &'a str,
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Clone, Debug, Deserialize, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::messages)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChatMessage {
@@ -28,13 +29,13 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Insertable)]
+#[derive(Deserialize, Insertable)]
 #[diesel(table_name = crate::schema::messages)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewChatMessage<'a> {
+pub struct NewChatMessage {
     pub room_id: Uuid,
     pub author: Uuid,
-    pub content: &'a str,
+    pub content: String,
 }
 
 #[derive(Queryable, Selectable)]

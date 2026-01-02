@@ -1,15 +1,22 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use argon2::password_hash::Encoding;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use diesel::{
-    ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,
-    r2d2::ConnectionManager,
+    BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, PgConnection,
+    QueryDsl, RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
 };
 use r2d2::Pool;
 use rand_core::OsRng;
+use tokio::sync::broadcast::Sender;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
-use crate::{NewSession, NewUser, Room, Session, User, room_participants, rooms, sessions, users};
+use crate::{
+    ChatMessage, NewChatMessage, NewSession, NewUser, Room, Session, User, messages,
+    room_participants, rooms, sessions, users,
+};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -18,6 +25,12 @@ pub enum AppError {
     QueryFailed(String),
     InsertFailed(String),
     PoolError(String),
+}
+
+impl From<diesel::result::Error> for AppError {
+    fn from(value: diesel::result::Error) -> Self {
+        Self::QueryFailed(value.to_string())
+    }
 }
 
 pub enum LoginError {
@@ -62,11 +75,15 @@ impl AppError {
 #[derive(Clone)]
 pub struct AppState {
     pool: Pool<ConnectionManager<PgConnection>>,
+    channels: Arc<RwLock<HashMap<Uuid, broadcast::Sender<ChatMessage>>>>,
 }
 
 impl AppState {
     pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            channels: Arc::default(),
+        }
     }
 
     pub async fn validate_password_and_get_user(
@@ -101,6 +118,23 @@ impl AppState {
         } else {
             Err(LoginError::InvalidPassword)
         }
+    }
+
+    pub async fn get_user_by_username(&self, username: String) -> Result<Option<User>, AppError> {
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            users::table
+                .filter(users::username.eq(username))
+                .select(User::as_select())
+                .first::<User>(&mut conn)
+                .optional()
+                .map_err(|e| AppError::QueryFailed(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))?
     }
 
     pub async fn create_session_for_user(&self, user: User) -> Result<Session, AppError> {
@@ -209,6 +243,118 @@ impl AppState {
                 .filter(room_participants::user_id.eq(user.id))
                 .select(Room::as_select())
                 .load(&mut conn)
+                .map_err(|e| AppError::QueryFailed(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))?
+    }
+
+    pub async fn create_room(&self, user: User) -> Result<Room, AppError> {
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            conn.transaction::<Room, AppError, _>(|conn| {
+                let room = diesel::insert_into(rooms::table)
+                    .default_values()
+                    .returning(Room::as_returning())
+                    .get_result(conn)?;
+
+                diesel::insert_into(room_participants::table)
+                    .values((
+                        room_participants::room_id.eq(room.id),
+                        room_participants::user_id.eq(user.id),
+                    ))
+                    .execute(conn)?;
+
+                Ok(room)
+            })
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))?
+    }
+
+    pub async fn user_has_access(&self, user: &User, room_id: Uuid) -> Result<bool, AppError> {
+        let pool = self.pool.clone();
+        let user_id = user.id;
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            diesel::select(diesel::dsl::exists(
+                room_participants::table.filter(
+                    room_participants::room_id
+                        .eq(room_id)
+                        .and(room_participants::user_id.eq(user_id)),
+                ),
+            ))
+            .get_result(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))?
+    }
+
+    pub async fn invite_to_room(&self, user: User, room: &Room) -> Result<(), AppError> {
+        let pool = self.pool.clone();
+        let room_id = room.id;
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            diesel::insert_into(room_participants::table)
+                .values((
+                    room_participants::room_id.eq(room_id),
+                    room_participants::user_id.eq(user.id),
+                ))
+                .execute(&mut conn)
+                .map_err(|e| AppError::QueryFailed(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn get_room_history(&self, room_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            messages::table
+                .filter(messages::room_id.eq(room_id))
+                .order(messages::id.asc()) // UUIDv7 allows sorting by ID for time
+                .select(ChatMessage::as_select())
+                .load(&mut conn)
+                .map_err(|e| AppError::QueryFailed(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::JoinError(e.to_string()))?
+    }
+
+    pub async fn get_channel(&self, room_id: Uuid) -> Sender<ChatMessage> {
+        let mut channels = self.channels.write().await;
+        channels
+            .entry(room_id)
+            .or_insert_with(|| {
+                let (tx, _rx) = broadcast::channel(128);
+                tx
+            })
+            .clone()
+    }
+
+    pub async fn save_message(&self, new_message: NewChatMessage) -> Result<ChatMessage, AppError> {
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+            diesel::insert_into(messages::table)
+                .values(new_message)
+                .returning(ChatMessage::as_returning())
+                .get_result(&mut conn)
                 .map_err(|e| AppError::QueryFailed(e.to_string()))
         })
         .await
