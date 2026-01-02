@@ -5,6 +5,24 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true
+
+[profile.release]
+symbols = "strip"
+
+[lints.clippy]
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
 [workspace.dependencies]
 bincode = { version = "2", features = ["serde"] }
 client = { path = "crates/client", version = "0.0.0" }
