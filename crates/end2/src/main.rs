@@ -1,4 +1,4 @@
-use diesel::{Connection, PgConnection, r2d2::ConnectionManager};
+use diesel::{PgConnection, r2d2::ConnectionManager};
 use end2::App;
 use tokio::net::TcpListener;
 

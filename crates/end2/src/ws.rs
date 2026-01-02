@@ -53,7 +53,7 @@ pub async fn handle_socket(socket: WebSocket, user: User, room_id: Uuid, app_sta
                 let new_chat_message = NewChatMessage {
                     room_id,
                     author: user.id,
-                    content: incoming.content
+                    content: incoming.content,
                 };
 
                 match app_state_recv.save_message(new_chat_message).await {

@@ -41,7 +41,7 @@ pub enum LoginError {
 
 impl From<AppError> for LoginError {
     fn from(inner: AppError) -> Self {
-        LoginError::System(inner)
+        Self::System(inner)
     }
 }
 
@@ -53,21 +53,20 @@ pub enum RegistrationError {
     System(AppError),
 }
 
-// Helper to wrap system errors
 impl From<AppError> for RegistrationError {
     fn from(inner: AppError) -> Self {
-        RegistrationError::System(inner)
+        Self::System(inner)
     }
 }
 
 impl AppError {
     pub fn to_string(&self) -> String {
         match self {
-            Self::ArgonError(s) => s.clone(),
-            Self::JoinError(s) => s.clone(),
-            Self::QueryFailed(s) => s.clone(),
-            Self::InsertFailed(s) => s.clone(),
-            Self::PoolError(s) => s.clone(),
+            Self::ArgonError(s)
+            | Self::JoinError(s)
+            | Self::QueryFailed(s)
+            | Self::InsertFailed(s)
+            | Self::PoolError(s) => s.clone(),
         }
     }
 }
@@ -79,6 +78,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[must_use]
     pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         Self {
             pool,
@@ -325,7 +325,7 @@ impl AppState {
 
             messages::table
                 .filter(messages::room_id.eq(room_id))
-                .order(messages::id.asc()) // UUIDv7 allows sorting by ID for time
+                .order(messages::id.asc())
                 .select(ChatMessage::as_select())
                 .load(&mut conn)
                 .map_err(|e| AppError::QueryFailed(e.to_string()))

@@ -20,9 +20,10 @@ impl From<ExtractError> for Response {
     fn from(value: ExtractError) -> Self {
         match value {
             ExtractError::NoSession => StatusCode::UNAUTHORIZED.into_response(),
-            ExtractError::CookieError(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
+            ExtractError::CookieError(s) | ExtractError::LookupError(s) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, s).into_response()
+            }
             ExtractError::InvalidSessionId(s) => (StatusCode::BAD_REQUEST, s).into_response(),
-            ExtractError::LookupError(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
         }
     }
 }

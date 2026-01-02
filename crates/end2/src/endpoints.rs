@@ -9,7 +9,6 @@ use axum_extra::extract::{
     CookieJar,
     cookie::{Cookie, Expiration, SameSite},
 };
-use futures::TryFutureExt;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -189,9 +188,11 @@ pub async fn register(
                 .build();
             Ok((jar.add(cookie), Redirect::to("/")).into_response())
         }
-        Err(RegistrationError::InvalidUsername)
-        | Err(RegistrationError::InvalidPassword)
-        | Err(RegistrationError::PasswordMismatch) => Err(StatusCode::BAD_REQUEST),
+        Err(
+            RegistrationError::InvalidUsername
+            | RegistrationError::InvalidPassword
+            | RegistrationError::PasswordMismatch,
+        ) => Err(StatusCode::BAD_REQUEST),
         Err(RegistrationError::UsernameTaken) => Err(StatusCode::CONFLICT),
         Err(RegistrationError::System(e)) => {
             tracing::error!("{:?}", e);
@@ -263,13 +264,11 @@ pub async fn direct_message(
     Path(SessionParams { room_id }): Path<SessionParams>,
     user: User,
 ) -> Result<impl IntoResponse, StatusCode> {
-    if !app_state
+    if app_state
         .user_has_access(&user, room_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     {
-        Err(StatusCode::NOT_FOUND)
-    } else {
         let dm = DirectMessage {
             name: Some(user.username),
         };
@@ -277,6 +276,8 @@ pub async fn direct_message(
         Ok(Html(
             dm.render().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
         ))
+    } else {
+        Err(StatusCode::NOT_FOUND)
     }
 }
 
