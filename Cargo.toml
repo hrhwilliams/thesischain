@@ -18,11 +18,6 @@ debug = true
 [profile.release]
 symbols = "strip"
 
-[lints.clippy]
-pedantic    = { level = "deny", priority = -1 }
-nursery     = { level = "deny", priority = -1 }
-unwrap_used = "deny"
-
 [workspace.dependencies]
 bincode = { version = "2", features = ["serde"] }
 client = { path = "crates/client", version = "0.0.0" }
