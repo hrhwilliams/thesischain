@@ -66,5 +66,24 @@ pub async fn post_challenge(
         .same_site(SameSite::Lax)
         .build();
 
-    Ok(jar.add(cookie))
+    Ok((
+        jar.add(cookie),
+        Json(serde_json::json!({ "status": "success" })),
+    ))
+}
+
+#[tracing::instrument(skip(app_state))]
+pub async fn logout(
+    State(app_state): State<AppState>,
+    user: Option<User>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(user) = user {
+        app_state.remove_active_sessions(user).await?;
+    }
+
+    Ok((
+        jar.remove("Session"),
+        Json(serde_json::json!({ "status": "success" })),
+    ))
 }

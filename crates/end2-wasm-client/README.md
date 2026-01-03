@@ -13,5 +13,6 @@ wasm-pack build --target bundler
 And then serve using npm:
 
 ```
-npm run serve
+cd frontend
+npm run dev
 ```

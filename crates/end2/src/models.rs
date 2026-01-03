@@ -1,7 +1,4 @@
-use base64::{
-    Engine,
-    prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD},
-};
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

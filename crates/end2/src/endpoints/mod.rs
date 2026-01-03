@@ -18,5 +18,6 @@ impl Api {
                 "/auth/challenge",
                 get(auth::get_challenge).post(auth::post_challenge),
             )
+            .route("/auth/logout", post(auth::logout))
     }
 }

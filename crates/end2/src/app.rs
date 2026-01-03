@@ -1,13 +1,9 @@
 use axum::http::Method;
 use axum::http::header;
-use axum::routing::any;
-use axum::routing::get;
-use axum::routing::post;
 use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
 use r2d2::Pool;
 use tokio::net::TcpListener;
-use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -64,11 +60,7 @@ impl App {
             .layer(
                 CorsLayer::new()
                     .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-                    .allow_headers([
-                        header::CONTENT_TYPE,
-                        header::ACCEPT,
-                        header::ORIGIN,
-                    ])
+                    .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::ORIGIN])
                     .allow_origin(["http://localhost:8080".parse().unwrap()])
                     .allow_credentials(true),
             )

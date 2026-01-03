@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use argon2::password_hash::Encoding;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use base64::Engine;
-use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD, BASE64_URL_SAFE};
+use base64::prelude::BASE64_STANDARD_NO_PAD;
 use diesel::{
     BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
@@ -37,41 +35,9 @@ impl AppState {
         }
     }
 
-    // pub async fn validate_password_and_get_user(
-    //     &self,
-    //     username: String,
-    //     password: String,
-    // ) -> Result<User, LoginError> {
-    //     let pool = self.pool.clone();
-
-    //     let user = tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //         users::dsl::users
-    //             .filter(users::columns::username.eq(username))
-    //             .first::<User>(&mut conn)
-    //             .optional()
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))??
-    //     .ok_or(LoginError::UserNotFound)?;
-
-    //     let password_hash = PasswordHash::parse(&user.pass, Encoding::B64)
-    //         .map_err(|e| AppError::ArgonError(e.to_string()))?;
-
-    //     let is_correct = Argon2::default()
-    //         .verify_password(password.as_bytes(), &password_hash)
-    //         .is_ok();
-
-    //     if is_correct {
-    //         Ok(user)
-    //     } else {
-    //         Err(LoginError::InvalidPassword)
-    //     }
-    // }
-
+    #[tracing::instrument(skip(self))]
     pub async fn get_user_by_username(&self, username: String) -> Result<Option<User>, AppError> {
+        tracing::info!("querying for user");
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
@@ -85,7 +51,9 @@ impl AppState {
         Ok(user)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn create_session_for_user(&self, user: User) -> Result<Session, AppError> {
+        tracing::info!("creating session for user");
         let new_session = NewSession { user_id: user.id };
         let pool = self.pool.clone();
 
@@ -100,7 +68,9 @@ impl AppState {
         Ok(session)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_user_from_session(&self, session_id: Uuid) -> Result<Option<User>, AppError> {
+        tracing::info!("getting user from session token");
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
@@ -115,23 +85,20 @@ impl AppState {
         Ok(user)
     }
 
-    // pub async fn delete_user_session(&self, user: User) -> Result<(), AppError> {
-    //     let pool = self.pool.clone();
+    pub async fn remove_active_sessions(&self, user: User) -> Result<(), AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        diesel::delete(sessions::dsl::sessions.filter(sessions::user_id.eq(user.id)))
+            .execute(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-    //         diesel::delete(sessions::dsl::sessions.filter(sessions::user_id.eq(user.id)))
-    //             .execute(&mut conn)
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))??;
+        Ok(())
+    }
 
-    //     Ok(())
-    // }
-
+    #[tracing::instrument(skip(self))]
     pub async fn register_user(&self, new_user: NewUserB64) -> Result<User, RegistrationError> {
+        tracing::info!("registering user");
         if new_user.username.trim().is_empty() {
             return Err(RegistrationError::InvalidUsername);
         }
@@ -180,7 +147,9 @@ impl AppState {
         Ok(user)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn generate_challenge_for(&self, username: String) -> Result<Challenge, AppError> {
+        tracing::info!("generating challenge");
         let user = self
             .get_user_by_username(username)
             .await?
@@ -202,11 +171,13 @@ impl AppState {
         Ok(challenge)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn verify_response_and_create_session(
         &self,
         id: Uuid,
         signature: String,
     ) -> Result<Session, AppError> {
+        tracing::info!("verifying challenge response");
         let mut conn = self
             .pool
             .get()
@@ -430,18 +401,5 @@ impl AppState {
     //     };
 
     //     room
-    // }
-
-    // async fn check_password(&self, user: &UserName, password: &str) -> Option<bool> {
-    //     let hash = {
-    //         let users = self.users.read().await;
-    //         users.get(user).and_then(|user| Some(user.password.clone()))
-    //     }?;
-
-    //     Some(
-    //         Argon2::default()
-    //             .verify_password(password.as_bytes(), &hash.password_hash())
-    //             .is_ok(),
-    //     )
     // }
 }

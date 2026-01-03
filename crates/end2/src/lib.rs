@@ -10,7 +10,6 @@ mod state;
 pub use app::*;
 pub use endpoints::*;
 pub use errors::*;
-pub use extractors::*;
 pub use models::*;
 pub use schema::*;
 pub use state::*;

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::Serializer;
 use uuid::Uuid;
-use vodozemac::olm::Account;
+use vodozemac::olm::{Account, AccountPickle};
 use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize, Serialize)]
@@ -33,6 +33,21 @@ impl End2ClientSession {
         }
     }
 
+    pub fn export_state(&self) -> Result<JsValue, JsError> {
+        Ok(serde_wasm_bindgen::to_value(
+            &self
+                .account
+                .to_libolm_pickle(&[0u8; 32])
+                .map_err(|e| JsError::new(&e.to_string()))?,
+        )?)
+    }
+
+    pub fn from_state(pickle: &str) -> Result<End2ClientSession, JsError> {
+        let account = Account::from_libolm_pickle(pickle, &[0u8; 32]).unwrap();
+
+        Ok(Self { account })
+    }
+
     pub fn get_identity_keys(&self) -> Result<JsValue, JsError> {
         let keys = self.account.identity_keys();
         Ok(serde_wasm_bindgen::to_value(&keys)?)
@@ -42,10 +57,7 @@ impl End2ClientSession {
         self.account.generate_one_time_keys(count);
         let otks = self.account.one_time_keys();
 
-        let otks_clean: HashMap<String, _> = otks
-            .iter()
-            .map(|(k, v)| (k.to_base64(), v)) 
-            .collect();
+        let otks_clean: HashMap<String, _> = otks.iter().map(|(k, v)| (k.to_base64(), v)).collect();
 
         let serializer = Serializer::json_compatible();
         Ok(otks_clean.serialize(&serializer)?)

@@ -1,5 +1,3 @@
-use std::f64::consts::E;
-
 use axum::{
     Json,
     http::StatusCode,
