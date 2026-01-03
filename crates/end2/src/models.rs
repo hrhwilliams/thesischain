@@ -2,21 +2,39 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Queryable, Selectable)]
+#[derive(Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: Uuid,
     pub username: String,
-    pub pass: String,
+    pub ed25519: Vec<u8>,
+    pub curve25519: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize, Insertable, Serialize)]
+#[diesel(table_name = crate::schema::users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct NewUser {
+    pub username: String,
+    pub ed25519: Vec<u8>,
+    pub curve25519: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+#[derive(Debug, Queryable, Selectable, Serialize)]
+#[diesel(table_name = crate::schema::challenge)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Challenge {
+    pub id: Uuid,
+    pub user_id: Uuid,
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = crate::schema::users)]
+#[diesel(table_name = crate::schema::challenge)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewUser<'a> {
-    pub username: &'a str,
-    pub pass: &'a str,
+pub struct NewChallenge {
+    pub user_id: Uuid,
 }
 
 #[derive(Clone, Debug, Deserialize, Queryable, Selectable, Serialize)]
@@ -38,7 +56,7 @@ pub struct NewChatMessage {
     pub content: String,
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::sessions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Session {
@@ -51,23 +69,6 @@ pub struct Session {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewSession {
     pub user_id: Uuid,
-}
-
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::schema::message_requests)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct MessageRequest {
-    pub id: Uuid,
-    pub sender: Uuid,
-    pub receiver: Uuid,
-}
-
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::message_requests)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewMessageRequest {
-    pub sender: Uuid,
-    pub receiver: Uuid,
 }
 
 #[derive(Queryable, Selectable)]

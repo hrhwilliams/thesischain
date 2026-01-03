@@ -18,7 +18,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let app = App::new(pool);
 
-    let listener = TcpListener::bind(("127.0.0.1", 8080))
+    let listener = TcpListener::bind(("127.0.0.1", 8081))
         .await
         .expect("TcpListener");
 

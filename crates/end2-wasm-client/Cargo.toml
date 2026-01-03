@@ -1,0 +1,15 @@
+[package]
+name = "end2-wasm-client"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde-wasm-bindgen = "0.6.5"
+serde_json.workspace = true
+vodozemac.workspace = true
+wasm-bindgen = "0.2.106"

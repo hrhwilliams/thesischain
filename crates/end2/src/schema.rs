@@ -1,10 +1,9 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    message_requests (id) {
+    challenge (id) {
         id -> Uuid,
-        sender -> Uuid,
-        receiver -> Uuid,
+        user_id -> Uuid,
     }
 }
 
@@ -14,6 +13,14 @@ diesel::table! {
         author -> Uuid,
         room_id -> Uuid,
         content -> Text,
+    }
+}
+
+diesel::table! {
+    otks (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        otk -> Bytea,
     }
 }
 
@@ -41,19 +48,24 @@ diesel::table! {
     users (id) {
         id -> Uuid,
         username -> Text,
-        pass -> Text,
+        ed25519 -> Bytea,
+        curve25519 -> Bytea,
+        signature -> Bytea,
     }
 }
 
+diesel::joinable!(challenge -> users (user_id));
 diesel::joinable!(messages -> rooms (room_id));
 diesel::joinable!(messages -> users (author));
+diesel::joinable!(otks -> users (user_id));
 diesel::joinable!(room_participants -> rooms (room_id));
 diesel::joinable!(room_participants -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    message_requests,
+    challenge,
     messages,
+    otks,
     room_participants,
     rooms,
     sessions,
