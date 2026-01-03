@@ -1,3 +1,5 @@
+use axum::http::Method;
+use axum::http::header;
 use axum::routing::any;
 use axum::routing::get;
 use axum::routing::post;
@@ -59,7 +61,17 @@ impl App {
         let router = axum::Router::new()
             .nest("/api", Api::new())
             .layer(TraceLayer::new_for_http())
-            .layer(CorsLayer::new().allow_methods(Any).allow_origin(Any).allow_headers(Any))
+            .layer(
+                CorsLayer::new()
+                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+                    .allow_headers([
+                        header::CONTENT_TYPE,
+                        header::ACCEPT,
+                        header::ORIGIN,
+                    ])
+                    .allow_origin(["http://localhost:8080".parse().unwrap()])
+                    .allow_credentials(true),
+            )
             .with_state(state);
 
         Self { router }

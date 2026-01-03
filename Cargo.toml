@@ -19,15 +19,20 @@ debug = true
 symbols = "strip"
 
 [workspace.dependencies]
+base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 client = { path = "crates/client", version = "0.0.0" }
 defs =   { path = "crates/defs",   version = "0.0.0" }
 dotenvy = "0.15.7"
 ed25519-dalek = { version = "2.2", features = ["digest", "serde"] }
+end2 = { path = "crates/end2" }
 miner =  { path = "crates/miner",  version = "0.0.0" }
 relay =  { path = "crates/relay",  version = "0.0.0" }
 reqwest = { version = "0.13.1", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.148"
 sha2 = "0.10"
 tokio = { version = "1.48.0", features = ["full"] }
+uuid = { version = "1.19.0", features = ["js", "serde", "v7"] }
+vodozemac = { version = "0.9.0", features = ["js"] }
 x25519-dalek = { version = "2.0", features = ["serde"] }

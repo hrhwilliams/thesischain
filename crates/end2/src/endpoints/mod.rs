@@ -12,7 +12,7 @@ pub struct Api;
 impl Api {
     pub fn new() -> axum::Router<AppState> {
         axum::Router::new()
-            // .route("/auth/me", get(auth::me))
+            .route("/auth/me", get(auth::me))
             .route("/auth/register", post(auth::register))
             .route(
                 "/auth/challenge",

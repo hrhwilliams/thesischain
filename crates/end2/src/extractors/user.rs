@@ -7,32 +7,7 @@ use axum_extra::extract::CookieJar;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::{AppState, User};
-
-pub enum ExtractError {
-    NoSession,
-    CookieError(String),
-    InvalidSessionId(String),
-    LookupError(String),
-}
-
-impl From<ExtractError> for Response {
-    fn from(value: ExtractError) -> Self {
-        match value {
-            ExtractError::NoSession => StatusCode::UNAUTHORIZED.into_response(),
-            ExtractError::CookieError(s) | ExtractError::LookupError(s) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, s).into_response()
-            }
-            ExtractError::InvalidSessionId(s) => (StatusCode::BAD_REQUEST, s).into_response(),
-        }
-    }
-}
-
-impl IntoResponse for ExtractError {
-    fn into_response(self) -> Response {
-        self.into()
-    }
-}
+use crate::{ApiError, AppState, ExtractError, User};
 
 impl User {
     async fn get_user_from_parts(
@@ -50,7 +25,7 @@ impl User {
             let user = app_state
                 .get_user_from_session(session_id)
                 .await
-                .map_err(|e| ExtractError::LookupError(e.to_string()))?
+                .map_err(|e| ExtractError::LookupError(e))?
                 .ok_or(ExtractError::NoSession)?;
 
             Ok(user)
@@ -61,27 +36,26 @@ impl User {
 }
 
 impl FromRequestParts<AppState> for User {
-    type Rejection = ExtractError;
+    type Rejection = ApiError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        app_state: &AppState,
-    ) -> Result<Self, ExtractError> {
-        Self::get_user_from_parts(parts, app_state).await
+    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
+        Self::get_user_from_parts(parts, app_state)
+            .await
+            .map_err(|e| e.into())
     }
 }
 
 impl OptionalFromRequestParts<AppState> for User {
-    type Rejection = ExtractError;
+    type Rejection = ApiError;
 
     async fn from_request_parts(
         parts: &mut Parts,
         app_state: &AppState,
-    ) -> Result<Option<Self>, ExtractError> {
+    ) -> Result<Option<Self>, ApiError> {
         match Self::get_user_from_parts(parts, app_state).await {
             Ok(user) => Ok(Some(user)),
             Err(ExtractError::NoSession) => Ok(None),
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     }
 }

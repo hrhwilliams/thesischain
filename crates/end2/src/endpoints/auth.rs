@@ -3,24 +3,28 @@ use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{ApiError, AppState, NewUser, User};
+use crate::{ApiError, AppState, NewUserB64, User};
 
 /// GET `/api/auth/me`
 ///
 /// returns user struct if the user has the Session cookie set with a valid session token
-// #[tracing::instrument]
-// pub async fn me(user: User) -> impl IntoResponse {
-//     Json(user)
-// }
+#[tracing::instrument]
+pub async fn me(user: User) -> impl IntoResponse {
+    Json(user)
+}
 
 /// POST `/api/auth/register` with JSON payload `{ username: string, ed25519: bytes, curve25519: bytes, signature: bytes}`
 #[tracing::instrument(skip(app_state))]
 pub async fn register(
     State(app_state): State<AppState>,
-    Json(new_user): Json<NewUser>,
+    Json(new_user): Json<NewUserB64>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(app_state.register_user(new_user).await?))
 }
@@ -49,11 +53,18 @@ pub struct ChallengeResponse {
 #[tracing::instrument(skip(app_state))]
 pub async fn post_challenge(
     State(app_state): State<AppState>,
+    jar: CookieJar,
     Json(ChallengeResponse { id, signature }): Json<ChallengeResponse>,
 ) -> Result<impl IntoResponse, ApiError> {
-    Ok(Json(
-        app_state
-            .verify_response_and_create_session(id, signature)
-            .await?,
-    ))
+    let session = app_state
+        .verify_response_and_create_session(id, signature)
+        .await?;
+    let cookie = Cookie::build(("Session", session.id.to_string()))
+        .path("/")
+        .http_only(true)
+        .secure(false)
+        .same_site(SameSite::Lax)
+        .build();
+
+    Ok(jar.add(cookie))
 }

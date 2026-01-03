@@ -11,5 +11,6 @@ base64.workspace = true
 serde.workspace = true
 serde-wasm-bindgen = "0.6.5"
 serde_json.workspace = true
+uuid.workspace = true
 vodozemac.workspace = true
 wasm-bindgen = "0.2.106"

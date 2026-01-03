@@ -4,7 +4,7 @@ use std::sync::Arc;
 use argon2::password_hash::Encoding;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use base64::Engine;
-use base64::prelude::BASE64_URL_SAFE;
+use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD, BASE64_URL_SAFE};
 use diesel::{
     BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use crate::{
     AppError, Challenge, ChatMessage, NewChallenge, NewChatMessage, NewSession, NewUser,
-    RegistrationError, Room, Session, User, challenge, messages, room_participants, rooms,
-    sessions, users,
+    NewUserB64, RegistrationError, Room, Session, User, challenge, messages, room_participants,
+    rooms, sessions, users,
 };
 
 #[derive(Clone)]
@@ -100,23 +100,20 @@ impl AppState {
         Ok(session)
     }
 
-    // pub async fn get_user_from_session(&self, session_id: Uuid) -> Result<Option<User>, AppError> {
-    //     let pool = self.pool.clone();
+    pub async fn get_user_from_session(&self, session_id: Uuid) -> Result<Option<User>, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let user = users::table
+            .inner_join(sessions::table)
+            .filter(sessions::id.eq(session_id))
+            .select(User::as_select())
+            .first::<User>(&mut conn)
+            .optional()
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-    //         users::table
-    //             .inner_join(sessions::table)
-    //             .filter(sessions::id.eq(session_id))
-    //             .select(User::as_select())
-    //             .first::<User>(&mut conn)
-    //             .optional()
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
+        Ok(user)
+    }
 
     // pub async fn delete_user_session(&self, user: User) -> Result<(), AppError> {
     //     let pool = self.pool.clone();
@@ -134,13 +131,16 @@ impl AppState {
     //     Ok(())
     // }
 
-    pub async fn register_user(&self, new_user: NewUser) -> Result<User, RegistrationError> {
+    pub async fn register_user(&self, new_user: NewUserB64) -> Result<User, RegistrationError> {
         if new_user.username.trim().is_empty() {
             return Err(RegistrationError::InvalidUsername);
         }
 
+        let new_user: NewUser = new_user.try_into()?;
+
         let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-            new_user.ed25519
+            new_user
+                .ed25519
                 .as_slice()
                 .try_into()
                 .map_err(|_| AppError::InvalidKeySize)?,
@@ -148,16 +148,19 @@ impl AppState {
         .map_err(|e| AppError::InvalidKey(e.to_string()))?;
 
         let signature = Signature::from_bytes(
-            new_user.signature
+            new_user
+                .signature
                 .as_slice()
                 .try_into()
                 .map_err(|_| AppError::InvalidSignature)?,
         );
 
         let message = [
-            new_user.curve25519.as_slice(), 
-            new_user.ed25519.as_slice()
-        ].concat();
+            new_user.username.as_bytes(),
+            new_user.curve25519.as_slice(),
+            new_user.ed25519.as_slice(),
+        ]
+        .concat();
 
         verifying_key
             .verify_strict(&message, &signature)
@@ -218,6 +221,8 @@ impl AppState {
             .map_err(|e| AppError::from(e))?
             .ok_or(AppError::NoSuchUser)?;
 
+        let message = [id.into_bytes(), user.id.into_bytes()].concat();
+
         let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
             user.ed25519
                 .as_slice()
@@ -226,9 +231,7 @@ impl AppState {
         )
         .map_err(|e| AppError::InvalidKey(e.to_string()))?;
 
-        let signature = BASE64_URL_SAFE
-            .decode(signature)
-            .map_err(|_| AppError::InvalidB64)?;
+        let signature = BASE64_STANDARD_NO_PAD.decode(signature)?;
         let signature = Signature::from_bytes(
             signature
                 .as_slice()
@@ -236,7 +239,7 @@ impl AppState {
                 .map_err(|_| AppError::InvalidSignature)?,
         );
         verifying_key
-            .verify_strict(id.as_bytes(), &signature)
+            .verify_strict(&message, &signature)
             .map_err(|e| AppError::ChallengeFailed(e.to_string()))?;
 
         self.create_session_for_user(user).await

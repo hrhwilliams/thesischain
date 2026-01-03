@@ -1,8 +1,11 @@
+use std::f64::consts::E;
+
 use axum::{
     Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use base64::DecodeError;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -22,15 +25,45 @@ impl IntoResponse for ApiError {
     }
 }
 
+pub enum ExtractError {
+    NoSession,
+    CookieError(String),
+    InvalidSessionId(String),
+    LookupError(AppError),
+}
+
+impl From<ExtractError> for ApiError {
+    fn from(value: ExtractError) -> Self {
+        match value {
+            ExtractError::NoSession => ApiError {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "missing session cookie".to_string(),
+                detail: None,
+            },
+            ExtractError::CookieError(s) => ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                message: "error extracting cookie".to_string(),
+                detail: Some(s),
+            },
+            ExtractError::InvalidSessionId(s) => ApiError {
+                status: StatusCode::BAD_REQUEST.into(),
+                message: "bad session token".to_string(),
+                detail: Some(s),
+            },
+            ExtractError::LookupError(e) => e.into(),
+        }
+    }
+}
+
 impl From<RegistrationError> for ApiError {
     fn from(value: RegistrationError) -> Self {
         match value {
-            RegistrationError::InvalidUsername => ApiError {
+            RegistrationError::InvalidUsername => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "bad username".to_string(),
                 detail: None,
             },
-            RegistrationError::UsernameExists => ApiError {
+            RegistrationError::UsernameExists => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "username taken".to_string(),
                 detail: None,
@@ -49,42 +82,42 @@ impl From<AppError> for RegistrationError {
 impl From<AppError> for ApiError {
     fn from(value: AppError) -> Self {
         match value {
-            AppError::ChallengeFailed(s) => ApiError {
+            AppError::ChallengeFailed(s) => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "challenge response failed".to_string(),
                 detail: Some(s),
             },
-            AppError::InvalidB64 => ApiError {
+            AppError::InvalidB64(s) => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "failed to decode base64 string".to_string(),
-                detail: None,
+                detail: Some(s),
             },
-            AppError::InvalidKey(s) => ApiError {
+            AppError::InvalidKey(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "invalid verifying key".to_string(),
                 detail: Some(s),
             },
-            AppError::InvalidKeySize => ApiError {
+            AppError::InvalidKeySize => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "verifying key has invalid size".to_string(),
                 detail: None,
             },
-            AppError::InvalidSignature => ApiError {
+            AppError::InvalidSignature => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "signature was invalid".to_string(),
                 detail: None,
             },
-            AppError::NoSuchUser => ApiError {
+            AppError::NoSuchUser => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "user does not exist".to_string(),
                 detail: None,
             },
-            AppError::PoolError(s) => ApiError {
+            AppError::PoolError(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "database connection failed".to_string(),
                 detail: Some(s),
             },
-            AppError::QueryFailed(s) => ApiError {
+            AppError::QueryFailed(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "query failed".to_string(),
                 detail: Some(s),
@@ -99,11 +132,17 @@ impl From<diesel::result::Error> for AppError {
     }
 }
 
+impl From<DecodeError> for AppError {
+    fn from(e: DecodeError) -> Self {
+        Self::InvalidB64(e.to_string())
+    }
+}
+
 pub enum InputError {}
 
 pub enum AppError {
     ChallengeFailed(String),
-    InvalidB64,
+    InvalidB64(String),
     InvalidKey(String),
     InvalidKeySize,
     InvalidSignature,
