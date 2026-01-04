@@ -4,20 +4,19 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use diesel::{
-    BoolExpressionMethods, Connection, ExpressionMethods, OptionalExtension, PgConnection,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
 };
+use diesel::{JoinOnDsl, alias};
 use ed25519_dalek::Signature;
 use r2d2::Pool;
-use rand_core::{OsRng, RngCore};
-use tokio::sync::broadcast::Sender;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use crate::{
-    AppError, Challenge, ChatMessage, NewChallenge, NewChatMessage, NewSession, NewUser,
-    NewUserB64, RegistrationError, Room, Session, User, challenge, messages, room_participants,
-    rooms, sessions, users,
+    AppError, Challenge, Channel, ChannelResponse, ChatMessage, KeyResponse, NewChallenge,
+    NewChannel, NewChatMessage, NewSession, NewUser, NewUserB64, Otk, RegistrationError, Session,
+    User, challenge, channel, message, one_time_key, session, user,
 };
 
 #[derive(Clone)]
@@ -41,8 +40,8 @@ impl AppState {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = users::table
-            .filter(users::username.eq(username))
+        let user = user::table
+            .filter(user::username.eq(username))
             .select(User::as_select())
             .first(&mut conn)
             .optional()
@@ -59,7 +58,7 @@ impl AppState {
 
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let session = diesel::insert_into(sessions::table)
+        let session = diesel::insert_into(session::table)
             .values(&new_session)
             .returning(Session::as_returning())
             .get_result::<Session>(&mut conn)
@@ -74,9 +73,9 @@ impl AppState {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = users::table
-            .inner_join(sessions::table)
-            .filter(sessions::id.eq(session_id))
+        let user = user::table
+            .inner_join(session::table)
+            .filter(session::id.eq(session_id))
             .select(User::as_select())
             .first::<User>(&mut conn)
             .optional()
@@ -89,7 +88,7 @@ impl AppState {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        diesel::delete(sessions::dsl::sessions.filter(sessions::user_id.eq(user.id)))
+        diesel::delete(session::dsl::session.filter(session::user_id.eq(user.id)))
             .execute(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
@@ -138,7 +137,7 @@ impl AppState {
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = diesel::insert_into(users::table)
+        let user = diesel::insert_into(user::table)
             .values(&new_user)
             .returning(User::as_returning())
             .get_result(&mut conn)
@@ -183,7 +182,7 @@ impl AppState {
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = users::table
+        let user = user::table
             .inner_join(challenge::table)
             .filter(challenge::id.eq(id))
             .select(User::as_select())
@@ -216,190 +215,92 @@ impl AppState {
         self.create_session_for_user(user).await
     }
 
-    // pub async fn get_rooms(&self, user: User) -> Result<Vec<Room>, AppError> {
-    //     let pool = self.pool.clone();
+    #[tracing::instrument(skip(self))]
+    pub async fn get_user_channels(&self, user: User) -> Result<Vec<ChannelResponse>, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let (sender, receiver) = alias!(
+            crate::schema::user as sender,
+            crate::schema::user as receiver
+        );
 
-    //         rooms::table
-    //             .inner_join(room_participants::table)
-    //             .filter(room_participants::user_id.eq(user.id))
-    //             .select(Room::as_select())
-    //             .load(&mut conn)
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
+        let channels = channel::table
+            .inner_join(sender.on(channel::sender.eq(sender.field(crate::schema::user::id))))
+            .inner_join(receiver.on(channel::receiver.eq(receiver.field(crate::schema::user::id))))
+            .filter(
+                channel::sender
+                    .eq(user.id)
+                    .or(channel::receiver.eq(user.id)),
+            )
+            .select((
+                Channel::as_select(),
+                sender.field(user::username),
+                receiver.field(user::username),
+            ))
+            .load::<(Channel, String, String)>(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-    // pub async fn create_room(&self, user: User) -> Result<Room, AppError> {
-    //     let pool = self.pool.clone();
+        let channels = channels
+            .into_iter()
+            .map(|(channel, sender, receiver)| ChannelResponse {
+                id: channel.id,
+                sender,
+                receiver,
+            })
+            .collect();
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        tracing::info!("{:?}", channels);
 
-    //         conn.transaction::<Room, AppError, _>(|conn| {
-    //             let room = diesel::insert_into(rooms::table)
-    //                 .default_values()
-    //                 .returning(Room::as_returning())
-    //                 .get_result(conn)?;
+        Ok(channels)
+    }
 
-    //             diesel::insert_into(room_participants::table)
-    //                 .values((
-    //                     room_participants::room_id.eq(room.id),
-    //                     room_participants::user_id.eq(user.id),
-    //                 ))
-    //                 .execute(conn)?;
+    pub async fn create_channel_between(
+        &self,
+        sender: User,
+        receiver: User,
+    ) -> Result<Channel, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-    //             Ok(room)
-    //         })
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
+        let new_channel = NewChannel {
+            sender: sender.id,
+            receiver: receiver.id,
+        };
 
-    // pub async fn user_has_access(&self, user: &User, room_id: Uuid) -> Result<bool, AppError> {
-    //     let pool = self.pool.clone();
-    //     let user_id = user.id;
+        let channel = diesel::insert_into(channel::table)
+            .values(&new_channel)
+            .returning(Channel::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| AppError::from(e))?;
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        Ok(channel)
+    }
 
-    //         diesel::select(diesel::dsl::exists(
-    //             room_participants::table.filter(
-    //                 room_participants::room_id
-    //                     .eq(room_id)
-    //                     .and(room_participants::user_id.eq(user_id)),
-    //             ),
-    //         ))
-    //         .get_result(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
+    pub async fn get_identity_key(&self, user: User) -> KeyResponse {
+        KeyResponse {
+            kind: "id".to_string(),
+            key: BASE64_STANDARD_NO_PAD.encode(user.curve25519),
+        }
+    }
 
-    // pub async fn invite_to_room(&self, user: User, room: &Room) -> Result<(), AppError> {
-    //     let pool = self.pool.clone();
-    //     let room_id = room.id;
+    pub async fn get_otk(&self, user: User) -> Result<KeyResponse, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let key = one_time_key::table
+            .filter(one_time_key::user_id.eq(user.id))
+            .select(Otk::as_select())
+            .first(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-    //         diesel::insert_into(room_participants::table)
-    //             .values((
-    //                 room_participants::room_id.eq(room_id),
-    //                 room_participants::user_id.eq(user.id),
-    //             ))
-    //             .execute(&mut conn)
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))??;
+        diesel::delete(one_time_key::dsl::one_time_key.filter(one_time_key::id.eq(key.id)))
+            .execute(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-    //     Ok(())
-    // }
-
-    // pub async fn get_room_history(&self, room_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
-    //     let pool = self.pool.clone();
-
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //         messages::table
-    //             .filter(messages::room_id.eq(room_id))
-    //             .order(messages::id.asc())
-    //             .select(ChatMessage::as_select())
-    //             .load(&mut conn)
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
-
-    // pub async fn get_channel(&self, room_id: Uuid) -> Sender<ChatMessage> {
-    //     let mut channels = self.channels.write().await;
-    //     channels
-    //         .entry(room_id)
-    //         .or_insert_with(|| {
-    //             let (tx, _rx) = broadcast::channel(128);
-    //             tx
-    //         })
-    //         .clone()
-    // }
-
-    // pub async fn save_message(&self, new_message: NewChatMessage) -> Result<ChatMessage, AppError> {
-    //     let pool = self.pool.clone();
-
-    //     tokio::task::spawn_blocking(move || {
-    //         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //         diesel::insert_into(messages::table)
-    //             .values(new_message)
-    //             .returning(ChatMessage::as_returning())
-    //             .get_result(&mut conn)
-    //             .map_err(|e| AppError::QueryFailed(e.to_string()))
-    //     })
-    //     .await
-    //     .map_err(|e| AppError::JoinError(e.to_string()))?
-    // }
-
-    // pub async fn get_direct_messages(&self, session: &Session) -> Option<Vec<DirectMessageLink>> {
-    //     let user_dms = {
-    //         let dms = self.dms.read().await;
-    //         dms.get(session.username()).cloned()
-    //     }?;
-
-    //     Some(user_dms)
-    // }
-
-    // pub async fn create_dm(&self, session: &Session, recipient: UserName) -> Result<(), AppError> {
-    //     let user_exists = {
-    //         let users = self.users.read().await;
-    //         users.get(session.username()).is_some()
-    //     };
-
-    //     let recipient_exists = {
-    //         let users = self.users.read().await;
-    //         users.get(&recipient).is_some()
-    //     };
-
-    //     if user_exists && recipient_exists {
-    //         let id = RoomId::new();
-    //         let mut dms = self.dms.write().await;
-
-    //         dms.get_mut(session.username())
-    //             .unwrap()
-    //             .push(DirectMessageLink {
-    //                 id: id.clone(),
-    //                 user: recipient.clone(),
-    //             });
-    //         dms.get_mut(&recipient).unwrap().push(DirectMessageLink {
-    //             id,
-    //             user: session.username().clone(),
-    //         });
-    //         Ok(())
-    //     } else {
-    //         Err(AppError::NoSuchUser)
-    //     }
-    // }
-
-    // pub async fn get_room(&self, room_id: RoomId) -> Room {
-    //     let room = {
-    //         let mut rooms = self.rooms.write().await;
-    //         rooms
-    //             .entry(room_id)
-    //             .or_insert_with(|| {
-    //                 let (tx, _rx) = broadcast::channel(128);
-    //                 Room {
-    //                     history: Arc::new(RwLock::new(vec![])),
-    //                     sender: tx,
-    //                 }
-    //             })
-    //             .clone()
-    //     };
-
-    //     room
-    // }
+        Ok(KeyResponse {
+            kind: "otk".to_string(),
+            key: BASE64_STANDARD_NO_PAD.encode(key.otk),
+        })
+    }
 }

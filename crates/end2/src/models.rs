@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::AppError;
 
 #[derive(Debug, Queryable, Selectable, Serialize)]
-#[diesel(table_name = crate::schema::users)]
+#[diesel(table_name = crate::schema::user)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: Uuid,
@@ -16,7 +16,7 @@ pub struct User {
 }
 
 #[derive(Debug, Insertable, Serialize)]
-#[diesel(table_name = crate::schema::users)]
+#[diesel(table_name = crate::schema::user)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewUser {
     pub username: String,
@@ -58,6 +58,15 @@ pub struct Challenge {
     pub user_id: Uuid,
 }
 
+#[derive(Debug, Queryable, Selectable)]
+#[diesel(table_name = crate::schema::one_time_key)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Otk {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub otk: Vec<u8>,
+}
+
 #[derive(Insertable)]
 #[diesel(table_name = crate::schema::challenge)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -66,26 +75,26 @@ pub struct NewChallenge {
 }
 
 #[derive(Clone, Debug, Deserialize, Queryable, Selectable, Serialize)]
-#[diesel(table_name = crate::schema::messages)]
+#[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChatMessage {
     pub id: Uuid,
-    pub room_id: Uuid,
+    pub channel_id: Uuid,
     pub author: Uuid,
-    pub content: String,
+    pub content: Vec<u8>,
 }
 
 #[derive(Deserialize, Insertable)]
-#[diesel(table_name = crate::schema::messages)]
+#[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewChatMessage {
-    pub room_id: Uuid,
+    pub channel_id: Uuid,
     pub author: Uuid,
-    pub content: String,
+    pub content: Vec<u8>,
 }
 
 #[derive(Queryable, Selectable, Serialize)]
-#[diesel(table_name = crate::schema::sessions)]
+#[diesel(table_name = crate::schema::session)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Session {
     pub id: Uuid,
@@ -93,31 +102,38 @@ pub struct Session {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = crate::schema::sessions)]
+#[diesel(table_name = crate::schema::session)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewSession {
     pub user_id: Uuid,
 }
 
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::schema::rooms)]
+#[derive(Queryable, Selectable, Serialize)]
+#[diesel(table_name = crate::schema::channel)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Room {
+pub struct Channel {
     pub id: Uuid,
-}
-
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::schema::room_participants)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct RoomParticipant {
-    pub room_id: Uuid,
-    pub user_id: Uuid,
+    pub sender: Uuid,
+    pub receiver: Uuid,
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = crate::schema::room_participants)]
+#[diesel(table_name = crate::schema::channel)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewRoomParticipant {
-    pub room_id: Uuid,
-    pub user_id: Uuid,
+pub struct NewChannel {
+    pub sender: Uuid,
+    pub receiver: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChannelResponse {
+    pub id: Uuid,
+    pub sender: String,
+    pub receiver: String,
+}
+
+#[derive(Serialize)]
+pub struct KeyResponse {
+    pub kind: String,
+    pub key: String,
 }

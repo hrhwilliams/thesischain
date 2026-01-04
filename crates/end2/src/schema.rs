@@ -8,16 +8,24 @@ diesel::table! {
 }
 
 diesel::table! {
-    messages (id) {
+    channel (id) {
         id -> Uuid,
-        author -> Uuid,
-        room_id -> Uuid,
-        content -> Text,
+        sender -> Uuid,
+        receiver -> Uuid,
     }
 }
 
 diesel::table! {
-    otks (id) {
+    message (id) {
+        id -> Uuid,
+        author -> Uuid,
+        channel_id -> Uuid,
+        content -> Bytea,
+    }
+}
+
+diesel::table! {
+    one_time_key (id) {
         id -> Uuid,
         user_id -> Uuid,
         otk -> Bytea,
@@ -25,27 +33,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    room_participants (room_id, user_id) {
-        room_id -> Uuid,
-        user_id -> Uuid,
-    }
-}
-
-diesel::table! {
-    rooms (id) {
-        id -> Uuid,
-    }
-}
-
-diesel::table! {
-    sessions (id) {
+    session (id) {
         id -> Uuid,
         user_id -> Uuid,
     }
 }
 
 diesel::table! {
-    users (id) {
+    user (id) {
         id -> Uuid,
         username -> Text,
         ed25519 -> Bytea,
@@ -54,20 +49,17 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(challenge -> users (user_id));
-diesel::joinable!(messages -> rooms (room_id));
-diesel::joinable!(messages -> users (author));
-diesel::joinable!(otks -> users (user_id));
-diesel::joinable!(room_participants -> rooms (room_id));
-diesel::joinable!(room_participants -> users (user_id));
-diesel::joinable!(sessions -> users (user_id));
+diesel::joinable!(challenge -> user (user_id));
+diesel::joinable!(message -> channel (channel_id));
+diesel::joinable!(message -> user (author));
+diesel::joinable!(one_time_key -> user (user_id));
+diesel::joinable!(session -> user (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     challenge,
-    messages,
-    otks,
-    room_participants,
-    rooms,
-    sessions,
-    users,
+    channel,
+    message,
+    one_time_key,
+    session,
+    user,
 );
