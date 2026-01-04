@@ -14,6 +14,7 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 use vodozemac::Curve25519PublicKey;
 
+use crate::user::curve25519;
 use crate::{
     AppError, Challenge, Channel, ChannelResponse, ChatMessage, KeyResponse, NewChallenge,
     NewChannel, NewChatMessage, NewOtk, NewSession, NewUser, NewUserB64, Otk, RegistrationError,
@@ -285,7 +286,7 @@ impl AppState {
         }
     }
 
-    pub async fn get_otk(&self, user: User) -> Result<KeyResponse, AppError> {
+    pub async fn get_otk(&self, user: User) -> Result<Curve25519PublicKey, AppError> {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
@@ -299,10 +300,11 @@ impl AppState {
             .execute(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-        Ok(KeyResponse {
-            kind: "otk".to_string(),
-            key: BASE64_STANDARD_NO_PAD.encode(key.otk),
-        })
+        let key = Curve25519PublicKey::from_bytes(
+            key.otk.try_into().map_err(|_| AppError::InvalidKeySize)?,
+        );
+
+        Ok(key)
     }
 
     pub async fn count_otks(&self, user: User) -> Result<i64, AppError> {
@@ -340,5 +342,36 @@ impl AppState {
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
         Ok(())
+    }
+
+    pub async fn get_channel_participant_info(
+        &self,
+        user: User,
+        channel_id: Uuid,
+    ) -> Result<(String, Curve25519PublicKey), AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let (username, identity_key) = channel::table
+            .filter(channel::id.eq(channel_id))
+            .inner_join(
+                user::table.on(user::id
+                    .eq(channel::sender)
+                    .or(user::id.eq(channel::receiver))),
+            )
+            .filter(user::id.ne(user.id))
+            .select((user::username, user::curve25519))
+            .first::<(String, Vec<u8>)>(&mut conn)
+            .optional()
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?
+            .ok_or(AppError::NoSuchUser)?;
+
+        let identity_key = Curve25519PublicKey::from_bytes(
+            identity_key
+                .try_into()
+                .map_err(|_| AppError::InvalidKeySize)?,
+        );
+
+        Ok((username, identity_key))
     }
 }

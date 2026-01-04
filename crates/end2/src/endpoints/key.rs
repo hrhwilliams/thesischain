@@ -37,7 +37,11 @@ pub async fn get_otk(
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    Ok(Json(app_state.get_otk(receiver).await?))
+    let otk = app_state.get_otk(receiver).await?;
+
+    Ok(Json(serde_json::json!({
+        "otk": otk.to_base64()
+    })))
 }
 
 pub async fn count_otks(

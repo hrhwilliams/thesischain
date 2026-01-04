@@ -31,7 +31,7 @@ const handleLogin = async () => {
                     v-model="usernameInput" 
                     required 
                     :disabled="isLoggingIn"
-                    placeholder="Enter your username"
+                    placeholder="Username"
                 >
             </p>
 
@@ -41,7 +41,7 @@ const handleLogin = async () => {
 
             <input 
                 type="submit" 
-                :value="isLoggingIn ? 'Verifying Keys...' : 'Log in'"
+                :value="isLoggingIn ? 'Logging in...' : 'Log in'"
                 :disabled="isLoggingIn"
             >
         </form>

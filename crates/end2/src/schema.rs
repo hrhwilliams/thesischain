@@ -18,9 +18,11 @@ diesel::table! {
 diesel::table! {
     message (id) {
         id -> Uuid,
-        author -> Uuid,
+        author_id -> Uuid,
         channel_id -> Uuid,
         content -> Bytea,
+        pre_key -> Bool,
+        relayed -> Bool,
     }
 }
 
@@ -51,7 +53,7 @@ diesel::table! {
 
 diesel::joinable!(challenge -> user (user_id));
 diesel::joinable!(message -> channel (channel_id));
-diesel::joinable!(message -> user (author));
+diesel::joinable!(message -> user (author_id));
 diesel::joinable!(one_time_key -> user (user_id));
 diesel::joinable!(session -> user (user_id));
 

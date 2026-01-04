@@ -24,6 +24,10 @@ impl Api {
             .route("/keys/otk", get(key::count_otks).post(key::publish_otks))
             .route("/channels", get(channel::get_all_channels))
             .route("/channel/{receiver}", post(channel::create_channel_with))
+            .route(
+                "/channels/{channel_id}/userinfo",
+                get(channel::get_channel_participant_info),
+            )
             .route("/channel/ws/{channel_id}", any(channel::handle_websocket))
     }
 }

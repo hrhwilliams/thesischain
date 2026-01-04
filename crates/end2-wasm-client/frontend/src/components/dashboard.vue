@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { authService } from '../auth.js'
 import { useAuth } from '../common.js';
@@ -41,6 +41,20 @@ const handleCreate = async () => {
     if (newReceiver.value)
         await createChannel(newReceiver.value);
 };
+
+onMounted(async () => {
+    try {
+        console.log(await authService.getOtkCount());
+    } catch (e) {
+        console.log(e);
+    }
+
+    const count = await authService.getOtkCount();
+
+    if (count < 5) {
+        await authService.uploadOtks(25);
+    }
+});
 </script>
 
 <template>

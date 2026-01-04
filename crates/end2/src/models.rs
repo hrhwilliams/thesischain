@@ -82,23 +82,71 @@ pub struct NewChallenge {
     pub user_id: Uuid,
 }
 
-#[derive(Clone, Debug, Deserialize, Queryable, Selectable, Serialize)]
+#[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChatMessage {
     pub id: Uuid,
+    pub author_id: Uuid,
     pub channel_id: Uuid,
-    pub author: Uuid,
     pub content: Vec<u8>,
+    pub pre_key: bool,
+    pub relayed: bool,
 }
 
-#[derive(Deserialize, Insertable)]
+/// MUST set `author_id` when converting from `InboundChatMessage` to this
+#[derive(Insertable)]
 #[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewChatMessage {
+    pub author_id: Uuid,
     pub channel_id: Uuid,
-    pub author: Uuid,
     pub content: Vec<u8>,
+    pub pre_key: bool,
+}
+
+/// MUST set `author` when converting from `ChatMessage`
+#[derive(Serialize)]
+pub struct OutboundChatMessage {
+    id: Uuid,
+    author: String,
+    author_id: Uuid,
+    channel_id: Uuid,
+    content: String, // b64encoded
+    pre_key: bool,
+}
+
+impl From<ChatMessage> for OutboundChatMessage {
+    fn from(message: ChatMessage) -> Self {
+        Self {
+            id: message.id,
+            author: "".to_string(),
+            author_id: message.author_id,
+            channel_id: message.channel_id,
+            content: BASE64_STANDARD_NO_PAD.encode(message.content),
+            pre_key: message.pre_key,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct InboundChatMessage {
+    channel_id: Uuid,
+    content: String, // b64encoded
+    pre_key: bool,
+}
+
+impl TryFrom<InboundChatMessage> for NewChatMessage {
+    type Error = AppError;
+
+    fn try_from(message: InboundChatMessage) -> Result<Self, AppError> {
+        Ok(Self {
+            author_id: Uuid::nil(),
+            channel_id: message.channel_id,
+            content: BASE64_STANDARD_NO_PAD.decode(message.content)?,
+            pre_key: message.pre_key,
+        })
+    }
 }
 
 #[derive(Queryable, Selectable, Serialize)]

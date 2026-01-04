@@ -6,7 +6,11 @@ export class AuthService {
         const savedState = localStorage.getItem('end2_device_identity');
 
         if (savedState) {
-            this.session = End2ClientSession.from_state(savedState);
+            try {
+                this.session = End2ClientSession.try_from_state(savedState);
+            } catch(e) {
+                console.log(e);
+            }
         } else {
             this.session = End2ClientSession.new();
         }
@@ -55,8 +59,40 @@ export class AuthService {
         return this._request(`/keys/${receiver}/otk`, 'GET');
     }
 
+    async getOtkCount() {
+        const response = await this._request('/keys/otk', 'GET');
+        return response.count;
+    }
+
+    async uploadOtks(count) {
+        const otks = this.session.generate_otks(count);
+        const state = this.session.export_state();
+        localStorage.setItem('end2_device_identity', state);
+        return this._request('/keys/otk', 'POST', {
+            "keys": otks
+        });
+    }
+
     async getMe() {
         return this._request('/auth/me', 'GET');
+    }
+
+    channel_has_session(id) {
+        return this.session.channel_has_session(id)
+    }
+
+    async create_session_in_channel(id) {
+        const response = await this._request(`/channels/${id}/userinfo`, 'GET');
+        const otk = await this._request(`/keys/${response.username}/otk`);
+
+        try {
+            this.session.create_outbound_session(id, response.username, response.curve25519, otk.otk);
+        } catch (e) {
+            console.log(e);
+        }
+
+        const state = this.session.export_state();
+        localStorage.setItem('end2_device_identity', state);
     }
 
     async _request(endpoint, method, body = null) {
