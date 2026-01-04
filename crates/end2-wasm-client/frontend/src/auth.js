@@ -13,7 +13,7 @@ export class AuthService {
     }
 
     async register(username) {
-        const payload = this.session.get_registration_payload(username);
+        const payload = this.session.register(username);
         const response = this._request('/auth/register', 'POST', payload);
         const state = this.session.export_state();
         localStorage.setItem('end2_device_identity', state);
@@ -35,6 +35,24 @@ export class AuthService {
 
     async logout() {
         return this._request('/auth/logout', 'POST');
+    }
+
+    async getChannels() {
+        return this._request('/channels', 'GET');
+    }
+
+    async createChannel(receiver) {
+        return this._request(`/channel/${receiver}`, 'POST', {
+            "receiver": receiver
+        });
+    }
+
+    async getUserId(receiver) {
+        return this._request(`/keys/${receiver}/id`, 'GET');
+    }
+
+    async getUserOtk(receiver) {
+        return this._request(`/keys/${receiver}/otk`, 'GET');
     }
 
     async getMe() {

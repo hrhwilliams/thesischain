@@ -1,10 +1,25 @@
 <script setup>
 import { onMounted } from 'vue';
+import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter } from 'vue-router';
-import { useAuth } from '../store.js';
+import { authService } from '../auth.js';
 
 const router = useRouter();
-const { logout } = useAuth();
+const queryClient = useQueryClient();
+
+const { mutateAsync: logout } = useMutation({
+    mutationFn: async () => {
+        await authService.logout();
+    },
+    onSuccess: () => {
+        queryClient.setQueryData(['user'], null);
+        queryClient.invalidateQueries({ queryKey: ['user'] });
+    },
+    onError: (err) => {
+        console.error("Logout failed on server:", err);
+        queryClient.setQueryData(['user'], null);
+    }
+});
 
 onMounted(async () => {
     try {

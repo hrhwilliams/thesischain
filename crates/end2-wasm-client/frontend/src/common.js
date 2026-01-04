@@ -33,20 +33,6 @@ export function useAuth() {
         },
     });
 
-    const { mutateAsync: logout } = useMutation({
-        mutationFn: async () => {
-            await authService.logout();
-        },
-        onSuccess: () => {
-            queryClient.setQueryData(['user'], null);
-            queryClient.invalidateQueries({ queryKey: ['user'] });
-        },
-        onError: (err) => {
-            console.error("Logout failed on server:", err);
-            queryClient.setQueryData(['user'], null);
-        }
-    });
-
     const { 
         mutateAsync: register, 
         isPending: isRegistering, 
@@ -64,7 +50,6 @@ export function useAuth() {
         isLoggingIn,
         isRegistering,
         login,
-        logout,
         register,
         loginError,
         registerError,
