@@ -40,8 +40,18 @@ pub async fn get_otk(
     Ok(Json(app_state.get_otk(receiver).await?))
 }
 
-pub async fn count_otks(State(app_state): State<AppState>, user: User) {}
+pub async fn count_otks(
+    State(app_state): State<AppState>,
+    user: User,
+) -> Result<impl IntoResponse, ApiError> {
+    let count = app_state.count_otks(user).await?;
+    Ok(Json(serde_json::json!({ "count": count })))
+}
 
-pub async fn publish_otks(State(app_state): State<AppState>, user: User, Json(otks): Json<Vec<String>>) {
+pub async fn publish_otks(
+    State(app_state): State<AppState>,
+    user: User,
+    Json(otks): Json<Vec<String>>,
+) {
     app_state.publish_otks(user, otks).await?;
 }

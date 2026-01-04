@@ -4,8 +4,8 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgConnection,
-    QueryDsl, RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+    RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
 };
 use diesel::{JoinOnDsl, alias};
 use ed25519_dalek::Signature;
@@ -302,5 +302,18 @@ impl AppState {
             kind: "otk".to_string(),
             key: BASE64_STANDARD_NO_PAD.encode(key.otk),
         })
+    }
+
+    pub async fn count_otks(&self, user: User) -> Result<usize, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let count = one_time_key::table
+            .filter(one_time_key::user_id.eq(user.id))
+            .count()
+            .execute(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+
+        Ok(count)
     }
 }
