@@ -12,11 +12,12 @@ use ed25519_dalek::Signature;
 use r2d2::Pool;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
+use vodozemac::Curve25519PublicKey;
 
 use crate::{
     AppError, Challenge, Channel, ChannelResponse, ChatMessage, KeyResponse, NewChallenge,
-    NewChannel, NewChatMessage, NewSession, NewUser, NewUserB64, Otk, RegistrationError, Session,
-    User, challenge, channel, message, one_time_key, session, user,
+    NewChannel, NewChatMessage, NewOtk, NewSession, NewUser, NewUserB64, Otk, RegistrationError,
+    Session, User, challenge, channel, message, one_time_key, session, user,
 };
 
 #[derive(Clone)]
@@ -315,5 +316,29 @@ impl AppState {
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
         Ok(count)
+    }
+
+    pub async fn publish_otks(&self, user: User, otks: Vec<String>) -> Result<(), AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let otks = otks
+            .iter()
+            .map(|key| -> Result<NewOtk, AppError> {
+                Ok(NewOtk {
+                    user_id: user.id,
+                    otk: Curve25519PublicKey::from_base64(key)
+                        .map_err(|e| AppError::InvalidKey(e.to_string()))?
+                        .to_bytes(),
+                })
+            })
+            .collect::<Result<Vec<NewOtk>, AppError>>()?;
+
+        diesel::insert_into(one_time_key::table)
+            .values(&otks)
+            .execute(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+
+        Ok(())
     }
 }

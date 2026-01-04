@@ -68,6 +68,14 @@ pub struct Otk {
 }
 
 #[derive(Insertable)]
+#[diesel(table_name = crate::schema::one_time_key)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct NewOtk {
+    pub user_id: Uuid,
+    pub otk: [u8; 32],
+}
+
+#[derive(Insertable)]
 #[diesel(table_name = crate::schema::challenge)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewChallenge {

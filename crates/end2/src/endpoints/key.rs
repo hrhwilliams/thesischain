@@ -52,6 +52,7 @@ pub async fn publish_otks(
     State(app_state): State<AppState>,
     user: User,
     Json(otks): Json<Vec<String>>,
-) {
+) -> Result<impl IntoResponse, ApiError> {
     app_state.publish_otks(user, otks).await?;
+    Ok(Json(serde_json::json!({ "status": "success" })))
 }
