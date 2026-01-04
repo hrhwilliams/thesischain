@@ -305,14 +305,14 @@ impl AppState {
         })
     }
 
-    pub async fn count_otks(&self, user: User) -> Result<usize, AppError> {
+    pub async fn count_otks(&self, user: User) -> Result<i64, AppError> {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let count = one_time_key::table
             .filter(one_time_key::user_id.eq(user.id))
             .count()
-            .execute(&mut conn)
+            .get_result(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
         Ok(count)

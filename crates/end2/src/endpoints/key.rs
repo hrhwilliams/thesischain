@@ -48,11 +48,16 @@ pub async fn count_otks(
     Ok(Json(serde_json::json!({ "count": count })))
 }
 
+#[derive(Deserialize)]
+pub struct OtkUpload {
+    pub keys: Vec<String>,
+}
+
 pub async fn publish_otks(
     State(app_state): State<AppState>,
     user: User,
-    Json(otks): Json<Vec<String>>,
+    Json(OtkUpload { keys }): Json<OtkUpload>,
 ) -> Result<impl IntoResponse, ApiError> {
-    app_state.publish_otks(user, otks).await?;
+    app_state.publish_otks(user, keys).await?;
     Ok(Json(serde_json::json!({ "status": "success" })))
 }
