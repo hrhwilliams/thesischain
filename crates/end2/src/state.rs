@@ -374,4 +374,10 @@ impl AppState {
 
         Ok((username, identity_key))
     }
+
+    pub async fn get_channel_broadcaster(&self, channel_id: Uuid) -> broadcast::Sender<ChatMessage> {
+        let mut channels = self.channels.write().await;
+        let sender = channels.entry(channel_id).or_insert(broadcast::Sender::new(128));
+        sender.clone()
+    }
 }

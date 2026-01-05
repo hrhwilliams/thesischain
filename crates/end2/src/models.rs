@@ -82,7 +82,7 @@ pub struct NewChallenge {
     pub user_id: Uuid,
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Clone, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ChatMessage {
@@ -95,7 +95,7 @@ pub struct ChatMessage {
 }
 
 /// MUST set `author_id` when converting from `InboundChatMessage` to this
-#[derive(Insertable)]
+#[derive(Debug, Insertable)]
 #[diesel(table_name = crate::schema::message)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewChatMessage {
@@ -108,12 +108,12 @@ pub struct NewChatMessage {
 /// MUST set `author` when converting from `ChatMessage`
 #[derive(Serialize)]
 pub struct OutboundChatMessage {
-    id: Uuid,
-    author: String,
-    author_id: Uuid,
-    channel_id: Uuid,
-    content: String, // b64encoded
-    pre_key: bool,
+    pub id: Uuid,
+    pub author: String,
+    pub author_id: Uuid,
+    pub channel_id: Uuid,
+    pub content: String, // b64encoded
+    pub pre_key: bool,
 }
 
 impl From<ChatMessage> for OutboundChatMessage {
@@ -129,7 +129,7 @@ impl From<ChatMessage> for OutboundChatMessage {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct InboundChatMessage {
     channel_id: Uuid,
     content: String, // b64encoded
