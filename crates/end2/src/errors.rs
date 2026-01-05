@@ -1,3 +1,5 @@
+use core::fmt;
+
 use axum::{
     Json,
     http::StatusCode,
@@ -124,6 +126,12 @@ impl From<AppError> for ApiError {
     }
 }
 
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl From<diesel::result::Error> for AppError {
     fn from(e: diesel::result::Error) -> Self {
         Self::QueryFailed(e.to_string())
@@ -138,6 +146,7 @@ impl From<DecodeError> for AppError {
 
 pub enum InputError {}
 
+#[derive(Debug)]
 pub enum AppError {
     ChallengeFailed(String),
     InvalidB64(String),

@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { useAuth } from './common.js';
 
 const route = useRoute();
-const pageTitle = computed(() => route.meta.title || '');
+let pageTitle = computed(() => route.meta.title || '');
 const { user } = useAuth();
 </script>
 

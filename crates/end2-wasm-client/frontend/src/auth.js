@@ -77,8 +77,29 @@ export class AuthService {
         return this._request('/auth/me', 'GET');
     }
 
-    channel_has_session(id) {
-        return this.session.channel_has_session(id)
+    channel_has_session(channel_id) {
+        return this.session.channel_has_session(channel_id);
+    }
+
+    get_recipient_info(channel_id) {
+        return this.session.get_recipient_info(channel_id)
+    }
+
+    encrypt(channel_id, message) {
+        return this.session.encrypt(channel_id, message);
+    }
+
+    decrypt(channel_id, message) {
+        return this.session.decrypt(channel_id, JSON.stringify(message));
+    }
+
+    async decrypt_new_session(channel_id, message) {
+        const response = await this._request(`/channels/${channel_id}/userinfo`, 'GET');
+        try {
+            return this.session.decrypt_new_session(channel_id, response.username, response.curve25519, JSON.stringify(message));
+        } catch (e) {
+            console.log(e);
+        }
     }
 
     async create_session_in_channel(id) {
@@ -93,6 +114,10 @@ export class AuthService {
 
         const state = this.session.export_state();
         localStorage.setItem('end2_device_identity', state);
+    }
+
+    send_message(id, message) {
+        const encrypted_message = this.session.encrypt(id, message);
     }
 
     async _request(endpoint, method, body = null) {

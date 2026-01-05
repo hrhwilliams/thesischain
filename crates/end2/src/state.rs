@@ -344,15 +344,15 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn get_channel_participant_info(
+    pub async fn get_other_channel_participant(
         &self,
-        user: User,
+        user: &User,
         channel_id: Uuid,
-    ) -> Result<(String, Curve25519PublicKey), AppError> {
+    ) -> Result<User, AppError> {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let (username, identity_key) = channel::table
+        let other = channel::table
             .filter(channel::id.eq(channel_id))
             .inner_join(
                 user::table.on(user::id
@@ -360,24 +360,36 @@ impl AppState {
                     .or(user::id.eq(channel::receiver))),
             )
             .filter(user::id.ne(user.id))
-            .select((user::username, user::curve25519))
-            .first::<(String, Vec<u8>)>(&mut conn)
+            .select(User::as_select())
+            .first(&mut conn)
             .optional()
             .map_err(|e| AppError::QueryFailed(e.to_string()))?
             .ok_or(AppError::NoSuchUser)?;
 
-        let identity_key = Curve25519PublicKey::from_bytes(
-            identity_key
-                .try_into()
-                .map_err(|_| AppError::InvalidKeySize)?,
-        );
-
-        Ok((username, identity_key))
+        Ok(other)
     }
 
-    pub async fn get_channel_broadcaster(&self, channel_id: Uuid) -> broadcast::Sender<ChatMessage> {
+    pub async fn get_channel_broadcaster(
+        &self,
+        channel_id: Uuid,
+    ) -> broadcast::Sender<ChatMessage> {
         let mut channels = self.channels.write().await;
-        let sender = channels.entry(channel_id).or_insert(broadcast::Sender::new(128));
+        let sender = channels
+            .entry(channel_id)
+            .or_insert(broadcast::Sender::new(128));
         sender.clone()
+    }
+
+    pub async fn save_message(&self, new_message: NewChatMessage) -> Result<ChatMessage, AppError> {
+        let pool = self.pool.clone();
+        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let message = diesel::insert_into(message::table)
+            .values(&new_message)
+            .returning(ChatMessage::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+
+        Ok(message)
     }
 }

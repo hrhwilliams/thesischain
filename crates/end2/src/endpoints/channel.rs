@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State, WebSocketUpgrade},
     response::IntoResponse,
 };
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -46,8 +47,11 @@ pub async fn handle_websocket(
     Path(WebsocketParams { channel_id }): Path<WebsocketParams>,
     user: User,
     ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| channel_socket(socket, user, channel_id, app_state))
+) -> Result<impl IntoResponse, ApiError> {
+    let other = app_state
+        .get_other_channel_participant(&user, channel_id)
+        .await?;
+    Ok(ws.on_upgrade(move |socket| channel_socket(socket, user, other, channel_id, app_state)))
 }
 
 #[tracing::instrument(skip(app_state))]
@@ -56,11 +60,11 @@ pub async fn get_channel_participant_info(
     Path(WebsocketParams { channel_id }): Path<WebsocketParams>,
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (username, identity_key) = app_state
-        .get_channel_participant_info(user, channel_id)
+    let other = app_state
+        .get_other_channel_participant(&user, channel_id)
         .await?;
     Ok(Json(serde_json::json!({
-        "username": username,
-        "curve25519": identity_key.to_base64()
+        "username": other.username,
+        "curve25519": BASE64_STANDARD_NO_PAD.encode(other.curve25519)
     })))
 }

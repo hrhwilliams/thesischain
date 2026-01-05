@@ -169,6 +169,15 @@ impl End2ClientSession {
         Ok(self.sessions.contains_key(&channel_id))
     }
 
+    pub fn get_recipient_info(&self, channel_id: &str) -> Result<String, JsError> {
+        let channel_id = Uuid::from_str(channel_id)?;
+        Ok(self
+            .sessions
+            .get(&channel_id)
+            .and_then(|channel| Some(channel.their_username.clone()))
+            .ok_or(JsError::new("No such session"))?)
+    }
+
     pub fn create_outbound_session(
         &mut self,
         channel_id: &str,
@@ -205,12 +214,18 @@ impl End2ClientSession {
             .get_mut(&channel_id)
             .ok_or(JsError::new("Missing session"))?;
 
-        let olm_message = channel.session.encrypt(message);
-
-        let outbound_message = OutboundChatMessage {
-            channel_id,
-            content: BASE64_STANDARD_NO_PAD.encode(olm_message.message()),
-            pre_key: olm_message.message_type() == MessageType::PreKey,
+        // let olm_message = channel.session.encrypt(message);
+        let outbound_message = match channel.session.encrypt(message) {
+            OlmMessage::Normal(m) => OutboundChatMessage {
+                channel_id,
+                content: m.to_base64(),
+                pre_key: false
+            },
+            OlmMessage::PreKey(pkm) => OutboundChatMessage {
+                channel_id,
+                content: pkm.to_base64(),
+                pre_key: true
+            },
         };
 
         Ok(serde_wasm_bindgen::to_value(&outbound_message)?)
@@ -230,6 +245,7 @@ impl End2ClientSession {
         if message.pre_key {
             let pkm = PreKeyMessage::from_base64(&message.content)?;
             let result = self.account.create_inbound_session(identity_key, &pkm)?;
+            let plaintext = String::from_utf8(result.plaintext)?;
             self.sessions.insert(
                 channel_id,
                 Channel {
@@ -238,13 +254,13 @@ impl End2ClientSession {
                     session: result.session,
                     message_history: vec![Message {
                         author: message.author,
-                        plaintext: String::from_utf8(result.plaintext)?,
+                        plaintext: plaintext.clone(),
                         timestamp: uuid_to_timestamp(message.id)?,
                     }],
                 },
             );
 
-            Ok(String::new())
+            Ok(plaintext)
         } else {
             Err(JsError::new("Expected PreKeyMessage"))
         }
