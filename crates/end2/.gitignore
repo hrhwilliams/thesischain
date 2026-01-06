@@ -1,3 +1,4 @@
 end2.db
 .diesel_lock
 .keep
+.env
