@@ -1,5 +1,6 @@
 use axum::http::Method;
 use axum::http::header;
+use axum::middleware;
 use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
 use r2d2::Pool;
@@ -9,6 +10,8 @@ use tower_http::trace::TraceLayer;
 
 use crate::Api;
 use crate::AppState;
+use crate::OAuthHandler;
+use crate::session::create_session;
 
 /// flow
 /// - client registers username and x25519/ed25519 key bundle
@@ -34,8 +37,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
-        let state = AppState::new(pool);
+    pub fn new(oauth: OAuthHandler, pool: Pool<ConnectionManager<PgConnection>>) -> Self {
+        let app_state = AppState::new(oauth, pool);
         // let router = axum::Router::new()
         //     .route("/", get(web_endpoints::index))
         //     .route(
@@ -56,15 +59,22 @@ impl App {
 
         let router = axum::Router::new()
             .nest("/api", Api::new())
-            .layer(TraceLayer::new_for_http())
+            .layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                create_session,
+            ))
             .layer(
                 CorsLayer::new()
-                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-                    .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::ORIGIN])
-                    .allow_origin(["http://localhost:8080".parse().unwrap()])
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+                    .allow_origin([
+                        "http://127.0.0.1:8080".parse().unwrap(),
+                        "http://localhost:8080".parse().unwrap(),
+                    ])
                     .allow_credentials(true),
             )
-            .with_state(state);
+            .layer(TraceLayer::new_for_http())
+            .with_state(app_state);
 
         Self { router }
     }

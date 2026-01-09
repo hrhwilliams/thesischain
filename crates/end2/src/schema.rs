@@ -1,43 +1,66 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    challenge (id) {
+    channel (id) {
         id -> Uuid,
-        user_id -> Uuid,
+        sender_id -> Uuid,
+        recipient_id -> Uuid,
     }
 }
 
 diesel::table! {
-    channel (id) {
+    device (id) {
         id -> Uuid,
-        sender -> Uuid,
-        receiver -> Uuid,
+        user_id -> Uuid,
+        ed25519 -> Nullable<Bytea>,
+        x25519 -> Nullable<Bytea>,
+    }
+}
+
+diesel::table! {
+    discord_auth_token (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        access_token -> Bytea,
+        refresh_token -> Nullable<Bytea>,
+        expires -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    discord_info (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        discord_id -> Int8,
+        discord_username -> Text,
+        global_name -> Nullable<Text>,
+        avatar -> Nullable<Text>,
     }
 }
 
 diesel::table! {
     message (id) {
         id -> Uuid,
-        author_id -> Uuid,
+        sender_id -> Uuid,
+        sender_device -> Uuid,
         channel_id -> Uuid,
-        content -> Bytea,
-        pre_key -> Bool,
-        relayed -> Bool,
+    }
+}
+
+diesel::table! {
+    message_payload (message_id, recipient_device) {
+        message_id -> Uuid,
+        recipient_device -> Uuid,
+        ciphertext -> Bytea,
+        is_pre_key -> Bool,
     }
 }
 
 diesel::table! {
     one_time_key (id) {
         id -> Uuid,
-        user_id -> Uuid,
+        device_id -> Uuid,
         otk -> Bytea,
-    }
-}
-
-diesel::table! {
-    session (id) {
-        id -> Uuid,
-        user_id -> Uuid,
     }
 }
 
@@ -45,23 +68,36 @@ diesel::table! {
     user (id) {
         id -> Uuid,
         username -> Text,
-        ed25519 -> Bytea,
-        curve25519 -> Bytea,
-        signature -> Bytea,
+        nickname -> Nullable<Text>,
+        password -> Nullable<Text>,
     }
 }
 
-diesel::joinable!(challenge -> user (user_id));
+diesel::table! {
+    web_session (id) {
+        id -> Uuid,
+        blob -> Jsonb,
+    }
+}
+
+diesel::joinable!(device -> user (user_id));
+diesel::joinable!(discord_auth_token -> user (user_id));
+diesel::joinable!(discord_info -> user (user_id));
 diesel::joinable!(message -> channel (channel_id));
-diesel::joinable!(message -> user (author_id));
-diesel::joinable!(one_time_key -> user (user_id));
-diesel::joinable!(session -> user (user_id));
+diesel::joinable!(message -> device (sender_device));
+diesel::joinable!(message -> user (sender_id));
+diesel::joinable!(message_payload -> device (recipient_device));
+diesel::joinable!(message_payload -> message (message_id));
+diesel::joinable!(one_time_key -> device (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    challenge,
     channel,
+    device,
+    discord_auth_token,
+    discord_info,
     message,
+    message_payload,
     one_time_key,
-    session,
     user,
+    web_session,
 );

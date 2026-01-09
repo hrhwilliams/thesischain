@@ -1,0 +1,1 @@
+drop table discord_info

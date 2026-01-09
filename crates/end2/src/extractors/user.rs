@@ -20,9 +20,20 @@ impl User {
         if let Some(session_cookie) = jar.get("Session") {
             let session_id = Uuid::from_str(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
+            let session = app_state
+                .get_session(session_id)
+                .await
+                .map_err(|e| ExtractError::LookupError(e))?
+                .ok_or(ExtractError::NoSession)?;
+
+            let user_id = app_state
+                .get_from_session::<Uuid>(&session, "user_id")
+                .await
+                .map_err(|e| ExtractError::LookupError(e))?
+                .ok_or(ExtractError::NoUser)?;
 
             let user = app_state
-                .get_user_from_session(session_id)
+                .get_user(user_id)
                 .await
                 .map_err(|e| ExtractError::LookupError(e))?
                 .ok_or(ExtractError::NoSession)?;
@@ -53,7 +64,7 @@ impl OptionalFromRequestParts<AppState> for User {
     ) -> Result<Option<Self>, ApiError> {
         match Self::get_user_from_parts(parts, app_state).await {
             Ok(user) => Ok(Some(user)),
-            Err(ExtractError::NoSession) => Ok(None),
+            Err(ExtractError::NoSession | ExtractError::NoUser) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }

@@ -27,6 +27,7 @@ impl IntoResponse for ApiError {
 
 pub enum ExtractError {
     NoSession,
+    NoUser,
     CookieError(String),
     InvalidSessionId(String),
     LookupError(AppError),
@@ -38,6 +39,11 @@ impl From<ExtractError> for ApiError {
             ExtractError::NoSession => ApiError {
                 status: StatusCode::UNAUTHORIZED.into(),
                 message: "missing session cookie".to_string(),
+                detail: None,
+            },
+            ExtractError::NoUser => ApiError {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "no such user".to_string(),
                 detail: None,
             },
             ExtractError::CookieError(s) => ApiError {
@@ -58,9 +64,14 @@ impl From<ExtractError> for ApiError {
 impl From<RegistrationError> for ApiError {
     fn from(value: RegistrationError) -> Self {
         match value {
-            RegistrationError::InvalidUsername => Self {
+            RegistrationError::InvalidUsernameOrPassword => Self {
                 status: StatusCode::BAD_REQUEST.into(),
-                message: "bad username".to_string(),
+                message: "bad username or password".to_string(),
+                detail: None,
+            },
+            RegistrationError::PasswordMismatch => Self {
+                status: StatusCode::BAD_REQUEST.into(),
+                message: "passwords do not match".to_string(),
                 detail: None,
             },
             RegistrationError::UsernameExists => Self {
@@ -68,23 +79,38 @@ impl From<RegistrationError> for ApiError {
                 message: "username taken".to_string(),
                 detail: None,
             },
-            RegistrationError::System(e) => e.into(),
+            RegistrationError::InvalidDiscordId(s) => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "invalid discord ID".to_string(),
+                detail: Some(s),
+            },
+            RegistrationError::InternalError(e) => e.into(),
         }
     }
 }
 
 impl From<AppError> for RegistrationError {
     fn from(value: AppError) -> Self {
-        Self::System(value)
+        Self::InternalError(value)
     }
 }
 
 impl From<AppError> for ApiError {
     fn from(value: AppError) -> Self {
         match value {
+            AppError::ArgonError(s) => Self {
+                status: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                message: "argon2 error".to_string(),
+                detail: Some(s),
+            },
             AppError::ChallengeFailed(s) => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "challenge response failed".to_string(),
+                detail: Some(s),
+            },
+            AppError::OAuth(s) => Self {
+                status: StatusCode::BAD_REQUEST.into(),
+                message: "oauth flow failed".to_string(),
                 detail: Some(s),
             },
             AppError::InvalidB64(s) => Self {
@@ -122,6 +148,16 @@ impl From<AppError> for ApiError {
                 message: "query failed".to_string(),
                 detail: Some(s),
             },
+            AppError::Unauthorized => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "tried to perform an unauthorized action".to_string(),
+                detail: None,
+            },
+            AppError::ValueError(s) => Self {
+                status: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                message: "failed to convert a value".to_string(),
+                detail: Some(s),
+            },
         }
     }
 }
@@ -148,7 +184,9 @@ pub enum InputError {}
 
 #[derive(Debug)]
 pub enum AppError {
+    ArgonError(String),
     ChallengeFailed(String),
+    OAuth(String),
     InvalidB64(String),
     InvalidKey(String),
     InvalidKeySize,
@@ -156,10 +194,85 @@ pub enum AppError {
     NoSuchUser,
     PoolError(String),
     QueryFailed(String),
+    Unauthorized,
+    ValueError(String),
 }
 
 pub enum RegistrationError {
-    InvalidUsername,
+    InvalidUsernameOrPassword,
+    PasswordMismatch,
     UsernameExists,
-    System(AppError),
+    InternalError(AppError),
+    InvalidDiscordId(String),
+}
+
+pub enum LoginError {
+    InternalError(AppError),
+    InvalidDiscordId(String),
+    InvalidPassword,
+    NoSuchUser,
+    NoPassword,
+}
+
+impl From<AppError> for LoginError {
+    fn from(value: AppError) -> Self {
+        Self::InternalError(value)
+    }
+}
+
+impl From<LoginError> for ApiError {
+    fn from(value: LoginError) -> Self {
+        match value {
+            LoginError::InternalError(e) => e.into(),
+            LoginError::InvalidDiscordId(s) => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "invalid discord ID".to_string(),
+                detail: Some(s),
+            },
+            LoginError::InvalidPassword => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "invalid password or username".to_string(),
+                detail: None,
+            },
+            LoginError::NoSuchUser => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "invalid password or username".to_string(),
+                detail: None,
+            },
+            LoginError::NoPassword => Self {
+                status: StatusCode::UNAUTHORIZED.into(),
+                message: "no password provided".to_string(),
+                detail: None,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OAuthError {
+    FailedToBuildClient(String),
+    FailedToCreateAuthUrl,
+    FailedToStoreAttempt,
+    FailedToRetrieveAttempt,
+    FailedToGetToken(String),
+    FailedToMakeSession,
+    FailedQuery,
+    StateMismatch,
+}
+
+impl From<OAuthError> for AppError {
+    fn from(value: OAuthError) -> Self {
+        match value {
+            OAuthError::FailedQuery => Self::OAuth("failed to query".to_string()),
+            OAuthError::FailedToBuildClient(s) => Self::OAuth(s),
+            OAuthError::FailedToCreateAuthUrl => Self::OAuth("failed to create url".to_string()),
+            OAuthError::FailedToGetToken(s) => Self::OAuth(s),
+            OAuthError::FailedToMakeSession => Self::OAuth("failed to make session".to_string()),
+            OAuthError::FailedToRetrieveAttempt => {
+                Self::OAuth("failed to retrieve challenge".to_string())
+            }
+            OAuthError::FailedToStoreAttempt => Self::OAuth("failed to store attempt".to_string()),
+            OAuthError::StateMismatch => Self::OAuth("states did not match".to_string()),
+        }
+    }
 }
