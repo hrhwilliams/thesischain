@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useQuery } from '@tanstack/vue-query'
 import { useClientState } from '../state'
 import { useRoute } from 'vue-router'
 import { get_channel_info } from '../api'
-import type { ApiError } from '../api';
+import type { ApiError, UserInfo } from '../api';
 
 const error = ref<ApiError | null>(null)
 const state = useClientState()
@@ -12,6 +12,9 @@ const route = useRoute()
 
 const channel_id = route.params.chat_id as string;
 const message_input = ref<string>("")
+const messages = computed(() =>
+    state.messages[channel_id] ?? []
+)
 
 const handleSendMessage = async () => {
     if (message_input.value.length === 0) return
@@ -46,6 +49,7 @@ const { data: channel_info } = useQuery({
         }
 
         console.log("pulled data:", response.data)
+        // cache usernames and nicknames here
         state.register_channel(response.data)
 
         return response.data
@@ -56,7 +60,10 @@ const { data: channel_info } = useQuery({
 <template>
     <div class="chat-container">
         <div class="message-history">
-            <!-- <div class="message"><span class="author">Maki</span> <span class="date">1-4-2026 4:39 PM</span><br>Here is my first message. Hello, world! I sure do find encryption to be very neat. Lorem ipsum dolor sit amet consectetur adipisicing elit. Dignissimos illo neque nam illum dolore laboriosam amet quisquam officiis modi quibusdam et deleniti, maiores libero ad, delectus, quos voluptatibus blanditiis ratione.</div> -->
+            <div v-for="message in messages" :key="message.message_id" class="message">
+                <span class="author">{{ state.get_user(channel_id, message.author_id) }}</span> <span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+                <div class="content">{{ message.plaintext }}</div>
+            </div>
         </div>
 
         <form @submit.prevent="handleSendMessage" class="input-area">
@@ -88,7 +95,7 @@ const { data: channel_info } = useQuery({
     background: #fcfcfc;
 }
 
-.message-history > .message {
+.message-history > .message > .content {
     padding-left: 1em;
     text-indent: -1em;
 }

@@ -1,11 +1,15 @@
-use crate::{ApiError, AppState, InboundChatMessage, OutboundChatMessage, User, WsEvent};
+use crate::{
+    ApiError, AppState, InboundChatMessage, MessageId, OutboundChatMessage, User, WsEvent,
+};
 use axum::{
     extract::{
-        Path, State, WebSocketUpgrade, ws::{Message, WebSocket}
+        Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::IntoResponse,
 };
 use futures::{SinkExt, StreamExt};
+use time::OffsetDateTime;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio::time::{Duration, timeout};
 use uuid::Uuid;
@@ -58,6 +62,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                                 let outbound = OutboundChatMessage {
                                     message_id: message.id,
                                     device_id: message.sender_device_id,
+                                    channel_id: message.channel_id,
                                     ciphertext: payload.ciphertext,
                                     timestamp: message.created,
                                     is_pre_key: payload.is_pre_key,
@@ -68,6 +73,14 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                             } else {
                                 tracing::warn!("message for unregistered device");
                             }
+                        }
+
+                        if let Some(sender) = app_state.get_broadcaster_for_device(message.sender_device_id).await {
+                            let _ = sender.send(WsEvent::MessageReceived(MessageId {
+                                message_id: message.id,
+                                channel_id: message.channel_id,
+                                timestamp: OffsetDateTime::now_utc()
+                            })).await;
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => {

@@ -1,19 +1,22 @@
 import { defineStore } from 'pinia'
 import { get_keys, get_my_otks, get_otks_for_channel, new_device_id, upload_keys, upload_otks, type UserInfo } from './api';
 import { DeviceContext } from '../../pkg/end2_wasm_client';
-import type { ApiResult, Channel, ChannelInfo, DeviceOtk } from './api'
+import type { Channel, ChannelInfo, MessageReceivedReply } from './api'
 import type { ChatMessage, DeviceContextKeys, InboundChatMessage } from './device'
 
 type WsEvent =
     | { type: 'channel_created', data: Channel }
     | { type: 'message', data: InboundChatMessage }
+    | { type: 'message_received', data: MessageReceivedReply }
 
 export const useClientState = defineStore('session', {
     state: () => ({
         user: null as UserInfo | null,
+        current_channel: null as string | null,
         channels: new Map<string, Channel>(),
         context: null as DeviceContext | null,
-        messages: new Map<string, ChatMessage[]>(),
+        channel_info: {} as Record<string, ChannelInfo>,
+        messages: {} as Record<string, ChatMessage[]>,
         ws: null as WebSocket | null,
     }),
 
@@ -46,21 +49,63 @@ export const useClientState = defineStore('session', {
                 console.log(event.data)
                 const payload = JSON.parse(event.data) as WsEvent
 
-                switch (payload.type) {
-                    case 'channel_created':
-                        this.add_channel(payload.data)
-                        break
-                    case 'message':
-                        console.info('message', payload.data)
-                        break
-                    default:
-                        console.warn('unknown ws event', payload)
+                try {
+                    switch (payload.type) {
+                        case 'channel_created':
+                            this.add_channel(payload.data)
+                            break
+                        case 'message':
+                            console.info('message', payload.data)
+                            let message: ChatMessage
+                            if (payload.data.is_pre_key) {
+                                message = this.context?.decrypt_new_session(payload.data)
+                            } else {
+                                message = this.context?.decrypt(payload.data)
+                            }
+
+                            this.on_message_decrypted(payload.data.channel_id, message)
+                            break
+                        case 'message_received':
+                            const received_message = this.context?.message_received(payload.data)
+                            this.on_message_decrypted(payload.data.channel_id, received_message)
+                            break
+                        default:
+                            console.warn('unknown ws event', payload)
+                    }
+                } catch (e) {
+                    throw e
+                } finally {
+                    if (this.user && this.context) {
+                        console.info('saving state')
+                        localStorage.setItem(`end2_device_context_${this.user.id}`, this.context.export_state())
+                    }
                 }
             }
         },
 
+        on_message_decrypted(channel_id: string, message: ChatMessage) {
+            if (!this.messages[channel_id]) {
+                this.messages[channel_id] = []
+            }
+
+            this.messages[channel_id].push(message)
+        },
+
         add_channel(channel: Channel) {
             this.channels.set(channel.channel_id, channel)
+        },
+
+        get_user(channel_id: string, user_id: string) {
+            if (this.user && user_id === this.user?.id) {
+                return this.user.nickname ? this.user.nickname : this.user.username
+            }
+
+            const other_user = this.channels.get(channel_id)
+            if (other_user && other_user.user_id === user_id) {
+                return other_user.nickname ? other_user.nickname : other_user.username
+            }
+
+            return null
         },
 
         async init_device() {
@@ -163,7 +208,9 @@ export const useClientState = defineStore('session', {
             }
 
             try {
+                this.current_channel = channel_info.channel_id
                 this.context.initialize_for_channel(channel_info)
+                this.channel_info[channel_info.channel_id] = channel_info
             } catch (e) {
                 console.error("error initializing channel: ", e)
             }

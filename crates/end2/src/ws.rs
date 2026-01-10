@@ -1,6 +1,7 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -8,10 +9,19 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Serialize)]
+pub struct MessageId {
+    pub message_id: Uuid,
+    pub channel_id: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub timestamp: OffsetDateTime,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum WsEvent {
     ChannelCreated(ChannelResponse),
     Message(OutboundChatMessage),
+    MessageReceived(MessageId),
 }
 
 // #[tracing::instrument(skip(socket, app_state))]

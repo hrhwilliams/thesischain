@@ -67,7 +67,10 @@ impl AppState {
         sender.clone()
     }
 
-    pub async fn get_broadcaster_for_device(&self, device_id: Uuid) -> Option<mpsc::Sender<WsEvent>> {
+    pub async fn get_broadcaster_for_device(
+        &self,
+        device_id: Uuid,
+    ) -> Option<mpsc::Sender<WsEvent>> {
         let device_websockets = self.device_websockets.read().await;
         device_websockets.get(&device_id).cloned()
     }
@@ -666,6 +669,7 @@ impl AppState {
             .select((
                 message::id,
                 message::sender_device_id,
+                message::channel_id,
                 message_payload::ciphertext,
                 message::created,
                 message_payload::is_pre_key,

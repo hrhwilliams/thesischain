@@ -52,6 +52,12 @@ export type DeviceOtk = {
     otk: string
 }
 
+export type MessageReceivedReply = {
+    message_id: string,
+    channel_id: string,
+    timestamp: string,
+}
+
 export type ApiResult<T> =
     | { ok: true;  data: T }
     | { ok: false; error: ApiError }

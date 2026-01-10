@@ -23,7 +23,7 @@ pub struct Channel {
     pub sessions: HashMap<DeviceId, Session>,
     pub x25519_keys: HashMap<DeviceId, Curve25519PublicKey>,
     pub message_history: Vec<DecryptedMessage>,
-    pub unpublished_messages: Vec<UnpublishedMessage>,
+    pub unpublished_messages: HashMap<Uuid, UnpublishedMessage>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -50,6 +50,14 @@ pub struct ChannelInfo {
 }
 
 #[derive(Deserialize)]
+pub struct MessageReceivedReply {
+    pub message_id: Uuid,
+    pub channel_id: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub timestamp: OffsetDateTime,
+}
+
+#[derive(Deserialize)]
 pub struct Device {
     pub device_id: DeviceId,
     pub user_id: UserId,
@@ -71,7 +79,7 @@ pub struct PickledChannel {
     pub sessions: HashMap<DeviceId, SessionPickle>,
     pub x25519_keys: HashMap<DeviceId, Curve25519PublicKey>,
     pub message_history: Vec<DecryptedMessage>,
-    pub unpublished_messages: Vec<UnpublishedMessage>,
+    pub unpublished_messages: HashMap<Uuid, UnpublishedMessage>,
 }
 
 impl From<Channel> for PickledChannel {
@@ -148,10 +156,11 @@ pub struct Otk {
 pub struct InboundChatMessage {
     message_id: Uuid,
     device_id: Uuid,
+    channel_id: Uuid,
     ciphertext: String, // b64encoded
     #[serde(with = "time::serde::rfc3339")]
     timestamp: OffsetDateTime,
-    pre_key: bool,
+    is_pre_key: bool,
 }
 
 #[derive(Serialize)]
@@ -171,8 +180,6 @@ pub struct OutboundChatMessagePayload {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct UnpublishedMessage {
-    pub message_id: Uuid,
-    pub user_id: Uuid,
     pub plaintext: String,
 }
 
@@ -301,17 +308,31 @@ impl DeviceContext {
         let channel_id = Uuid::from_str(channel_id).map_err(|e| JsError::new(&e.to_string()))?;
         Ok(self.channels.contains_key(&channel_id))
     }
-    
-    pub fn create_session_from_otk(&mut self, channel_id: &str, otk: JsValue) -> Result<(), JsError> {
+
+    pub fn create_session_from_otk(
+        &mut self,
+        channel_id: &str,
+        otk: JsValue,
+    ) -> Result<(), JsError> {
         let channel_id = Uuid::from_str(channel_id).map_err(|e| JsError::new(&e.to_string()))?;
         let otk: Otk =
             serde_wasm_bindgen::from_value(otk).map_err(|e| JsError::new(&e.to_string()))?;
-    
-        let otk_key = Curve25519PublicKey::from_base64(&otk.otk)?;
-        let channel = self.channels.get_mut(&channel_id).ok_or(JsError::new("Missing channel"))?;
-        let identity_key = channel.x25519_keys.get(&otk.device_id).ok_or(JsError::new("Missing device"))?;
 
-        let session = self.account.create_outbound_session(SessionConfig::version_2(), *identity_key, otk_key);
+        let otk_key = Curve25519PublicKey::from_base64(&otk.otk)?;
+        let channel = self
+            .channels
+            .get_mut(&channel_id)
+            .ok_or(JsError::new("Missing channel"))?;
+        let identity_key = channel
+            .x25519_keys
+            .get(&otk.device_id)
+            .ok_or(JsError::new("Missing device"))?;
+
+        let session = self.account.create_outbound_session(
+            SessionConfig::version_2(),
+            *identity_key,
+            otk_key,
+        );
         channel.sessions.insert(otk.device_id, session);
 
         Ok(())
@@ -357,7 +378,7 @@ impl DeviceContext {
                 sessions: HashMap::new(),
                 x25519_keys,
                 message_history: vec![],
-                unpublished_messages: vec![],
+                unpublished_messages: HashMap::new(),
             });
 
         Ok(())
@@ -411,11 +432,12 @@ impl DeviceContext {
             payloads.push(payload);
         }
 
-        channel.unpublished_messages.push(UnpublishedMessage {
+        channel.unpublished_messages.insert(
             message_id,
-            user_id: self.user_id,
-            plaintext: message.to_string(),
-        });
+            UnpublishedMessage {
+                plaintext: message.to_string(),
+            },
+        );
 
         let outbound_message = OutboundChatMessage {
             message_id,
@@ -427,25 +449,44 @@ impl DeviceContext {
         Ok(serde_wasm_bindgen::to_value(&outbound_message)?)
     }
 
-    pub fn decrypt_new_session(
-        &mut self,
-        channel_id: &str,
-        message: JsValue,
-    ) -> Result<JsValue, JsError> {
-        let channel_id = Uuid::from_str(channel_id).map_err(|e| JsError::new(&e.to_string()))?;
+    pub fn message_received(&mut self, received: JsValue) -> Result<JsValue, JsError> {
+        let received: MessageReceivedReply =
+            serde_wasm_bindgen::from_value(received).map_err(|e| JsError::new(&e.to_string()))?;
+
         let channel = self
             .channels
-            .get_mut(&channel_id)
+            .get_mut(&received.channel_id)
             .ok_or(JsError::new("Missing channel"))?;
 
+        let message = channel
+            .unpublished_messages
+            .remove(&received.message_id)
+            .ok_or(JsError::new("Missing message"))?;
+        let message = DecryptedMessage {
+            message_id: received.message_id,
+            author_id: self.user_id,
+            plaintext: message.plaintext,
+            timestamp: received.timestamp,
+        };
+
+        channel.message_history.push(message.clone());
+        Ok(serde_wasm_bindgen::to_value(&message)?)
+    }
+
+    pub fn decrypt_new_session(&mut self, message: JsValue) -> Result<JsValue, JsError> {
         let message: InboundChatMessage =
             serde_wasm_bindgen::from_value(message).map_err(|e| JsError::new(&e.to_string()))?;
+
+        let channel = self
+            .channels
+            .get_mut(&message.channel_id)
+            .ok_or(JsError::new("Missing channel"))?;
 
         if message.device_id == self.device_id {
             return Err(JsError::new("Cannot decrypt message from self"));
         }
 
-        if message.pre_key {
+        if message.is_pre_key {
             let identity_key = channel
                 .x25519_keys
                 .get(&message.device_id)
@@ -474,8 +515,7 @@ impl DeviceContext {
         }
     }
 
-    pub fn decrypt(&mut self, channel_id: &str, message: JsValue) -> Result<JsValue, JsError> {
-        let channel_id = Uuid::from_str(channel_id)?;
+    pub fn decrypt(&mut self, message: JsValue) -> Result<JsValue, JsError> {
         let message: InboundChatMessage =
             serde_wasm_bindgen::from_value(message).map_err(|e| JsError::new(&e.to_string()))?;
 
@@ -483,12 +523,12 @@ impl DeviceContext {
             return Err(JsError::new("Cannot decrypt message from self"));
         }
 
-        if !message.pre_key {
+        if !message.is_pre_key {
             let msg =
                 OlmMessage::from_parts(1, &BASE64_STANDARD_NO_PAD.decode(&message.ciphertext)?)?;
             let channel = self
                 .channels
-                .get_mut(&channel_id)
+                .get_mut(&message.channel_id)
                 .ok_or(JsError::new("Missing channel"))?;
             let author_id = channel
                 .device_to_author
