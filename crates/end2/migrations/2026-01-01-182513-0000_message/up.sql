@@ -1,6 +1,7 @@
 create table message (
-    id uuid default uuidv7() primary key, -- using UUIDv7 so no need for timestamp col
+    id uuid primary key,
     sender_id uuid not null references "user"(id),
-    sender_device uuid not null references device(id),
-    channel_id uuid not null references channel(id) on delete cascade
+    sender_device_id uuid not null references device(id),
+    channel_id uuid not null references channel(id) on delete cascade,
+    created timestamptz not null default now()
 )

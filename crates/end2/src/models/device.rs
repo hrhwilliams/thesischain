@@ -21,18 +21,25 @@ pub struct Device {
 pub struct OutboundDevice {
     pub device_id: Uuid,
     pub user_id: Uuid,
-    pub ed25519: Option<String>,
-    pub x25519: Option<String>,
+    pub ed25519: String,
+    pub x25519: String,
 }
 
-impl From<Device> for OutboundDevice {
-    fn from(device: Device) -> Self {
-        Self {
+impl TryFrom<Device> for OutboundDevice {
+    type Error = AppError;
+    fn try_from(device: Device) -> Result<Self, Self::Error> {
+        Ok(Self {
             device_id: device.id,
             user_id: device.user_id,
-            ed25519: device.ed25519.map(|b| BASE64_STANDARD_NO_PAD.encode(b)),
-            x25519: device.x25519.map(|b| BASE64_STANDARD_NO_PAD.encode(b)),
-        }
+            ed25519: device
+                .ed25519
+                .map(|b| BASE64_STANDARD_NO_PAD.encode(b))
+                .ok_or(AppError::InvalidKey("Uninitialized key".to_string()))?,
+            x25519: device
+                .x25519
+                .map(|b| BASE64_STANDARD_NO_PAD.encode(b))
+                .ok_or(AppError::InvalidKey("Uninitialized key".to_string()))?,
+        })
     }
 }
 

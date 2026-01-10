@@ -24,16 +24,16 @@ pub async fn create_channel_with(
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let new_channel = app_state.create_channel_between(&user, &recipient).await?;
+    let (user1, user2) = app_state.create_channel_between(&user, &recipient).await?;
 
     app_state
-        .notify_user(&user, WsEvent::ChannelCreated(new_channel.clone()))
+        .notify_user(&user, WsEvent::ChannelCreated(user1.clone()))
         .await;
     app_state
-        .notify_user(&recipient, WsEvent::ChannelCreated(new_channel.clone()))
+        .notify_user(&recipient, WsEvent::ChannelCreated(user2))
         .await;
 
-    Ok(Json(new_channel))
+    Ok(Json(user1))
 }
 
 // #[tracing::instrument(skip(app_state))]

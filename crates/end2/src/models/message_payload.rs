@@ -1,6 +1,6 @@
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::AppError;
@@ -10,7 +10,7 @@ use crate::AppError;
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MessagePayload {
     pub message_id: Uuid,
-    pub recipient_device: Uuid,
+    pub recipient_device_id: Uuid,
     pub ciphertext: Vec<u8>,
     pub is_pre_key: bool,
 }
@@ -20,30 +20,25 @@ pub struct MessagePayload {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewMessagePayload {
     pub message_id: Uuid,
-    pub recipient_device: Uuid,
+    pub recipient_device_id: Uuid,
     pub ciphertext: Vec<u8>,
     pub is_pre_key: bool,
 }
 
-impl TryFrom<InboundMessagePayload> for NewMessagePayload {
-    type Error = AppError;
-
-    fn try_from(msg: InboundMessagePayload) -> Result<Self, Self::Error> {
-        Ok(Self {
-            message_id: msg.message_id,
-            recipient_device: msg.recipient_device,
-            ciphertext: BASE64_STANDARD_NO_PAD
-                .decode(msg.ciphertext)
-                .map_err(|e| AppError::InvalidB64(e.to_string()))?,
-            is_pre_key: msg.is_pre_key,
-        })
-    }
-}
-
 #[derive(Clone, Deserialize)]
 pub struct InboundMessagePayload {
-    pub message_id: Uuid,
-    pub recipient_device: Uuid,
+    pub recipient_device_id: Uuid,
     pub ciphertext: String,
     pub is_pre_key: bool,
+}
+
+impl InboundMessagePayload {
+    pub fn to_new_message(self, message_id: Uuid) -> Result<NewMessagePayload, AppError> {
+        Ok(NewMessagePayload {
+            message_id,
+            recipient_device_id: self.recipient_device_id,
+            ciphertext: BASE64_STANDARD_NO_PAD.decode(self.ciphertext)?,
+            is_pre_key: self.is_pre_key,
+        })
+    }
 }

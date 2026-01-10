@@ -52,6 +52,6 @@ impl Api {
             //     "/user/{user_id}/device/{device_id}",
             //     get(device::get_user_device),
             // )
-            .route("/ws", any(ws::handle_websocket))
+            .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
     }
 }

@@ -1,14 +1,16 @@
-use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Queryable, Selectable)]
+use crate::util::serialize_as_base64;
+
+#[derive(Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::one_time_key)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Otk {
     pub id: Uuid,
     pub device_id: Uuid,
+    #[serde(serialize_with = "serialize_as_base64")]
     pub otk: Vec<u8>,
 }
 
@@ -18,19 +20,6 @@ pub struct Otk {
 pub struct NewOtk {
     pub device_id: Uuid,
     pub otk: [u8; 32],
-}
-
-#[derive(Serialize)]
-pub struct OutboundOtk {
-    pub otk: String,
-}
-
-impl From<Otk> for OutboundOtk {
-    fn from(value: Otk) -> Self {
-        Self {
-            otk: BASE64_STANDARD_NO_PAD.encode(value.otk),
-        }
-    }
 }
 
 #[derive(Deserialize)]

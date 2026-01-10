@@ -2,7 +2,7 @@ use diesel::prelude::*;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::OutboundDevice;
+use crate::{OutboundDevice, OutboundUser};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::channel)]
@@ -21,18 +21,17 @@ pub struct NewChannel {
     pub recipient_id: Uuid,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ChannelResponse {
     pub channel_id: Uuid,
     pub user_id: Uuid,
-    pub user_name: String,
+    pub username: String,
+    pub nickname: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct ChannelInfo {
     pub channel_id: Uuid,
-    pub user_id: Uuid,
-    pub username: String,
-    pub nickname: Option<String>,
+    pub users: Vec<OutboundUser>,
     pub devices: Vec<OutboundDevice>,
 }

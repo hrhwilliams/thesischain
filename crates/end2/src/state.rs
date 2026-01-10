@@ -11,23 +11,23 @@ use diesel::{
     RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
 };
 use diesel::{JoinOnDsl, alias};
-use ed25519_dalek::{Signature, VerifyingKey};
+use ed25519_dalek::Signature;
 use r2d2::Pool;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use uuid::Uuid;
-use vodozemac::{Curve25519PublicKey, Ed25519Signature};
+use vodozemac::Curve25519PublicKey;
 
 use crate::models::User;
 use crate::schema::{channel, device, user, web_session};
 use crate::{
     AppError, Channel, ChannelInfo, ChannelResponse, ChatMessage, Device, InboundChatMessage,
-    InboundDevice, InboundDiscordInfo, InboundMessagePayload, InboundOtks, InboundUser, LoginError,
-    MessagePayload, NewChannel, NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload,
-    NewOtk, NewUser, OAuthHandler, Otk, OutboundChatMessage, OutboundDevice, OutboundOtk,
-    RegistrationError, WebSession, WsEvent, discord_info, message, message_payload, one_time_key,
+    InboundDevice, InboundDiscordInfo, InboundOtks, InboundUser, LoginError, MessagePayload,
+    NewChannel, NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload, NewOtk, NewUser,
+    OAuthHandler, Otk, OutboundChatMessage, OutboundDevice, RegistrationError, WebSession, WsEvent,
+    discord_info, message, message_payload, one_time_key,
 };
 
 #[derive(Clone)]
@@ -35,6 +35,7 @@ pub struct AppState {
     pub oauth: OAuthHandler,
     pool: Pool<ConnectionManager<PgConnection>>,
     user_websockets: Arc<RwLock<HashMap<Uuid, broadcast::Sender<WsEvent>>>>,
+    device_websockets: Arc<RwLock<HashMap<Uuid, mpsc::Sender<WsEvent>>>>,
 }
 
 impl AppState {
@@ -44,18 +45,36 @@ impl AppState {
             oauth,
             pool,
             user_websockets: Arc::default(),
+            device_websockets: Arc::default(),
         }
     }
 
+    pub async fn register_device(&self, device_id: Uuid, device_tx: mpsc::Sender<WsEvent>) {
+        let mut device_websockets = self.device_websockets.write().await;
+        device_websockets.insert(device_id, device_tx);
+    }
+
+    pub async fn unregister_device(&self, device_id: Uuid) {
+        let mut device_websockets = self.device_websockets.write().await;
+        device_websockets.remove(&device_id);
+    }
+
     pub async fn get_broadcaster(&self, user: &User) -> broadcast::Sender<WsEvent> {
-        let mut websockets = self.user_websockets.write().await;
-        let sender = websockets
+        let mut user_websockets = self.user_websockets.write().await;
+        let sender = user_websockets
             .entry(user.id)
             .or_insert(broadcast::Sender::new(128));
         sender.clone()
     }
 
+    pub async fn get_broadcaster_for_device(&self, device_id: Uuid) -> Option<mpsc::Sender<WsEvent>> {
+        let device_websockets = self.device_websockets.read().await;
+        device_websockets.get(&device_id).cloned()
+    }
+
+    #[tracing::instrument(skip(self))]
     pub async fn notify_user(&self, user: &User, event: WsEvent) {
+        tracing::info!("sending event");
         let broadcaster = self.get_broadcaster(user).await;
         broadcaster.send(event);
     }
@@ -563,14 +582,12 @@ impl AppState {
             .load(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?
             .into_iter()
-            .map(|d| d.into())
-            .collect::<Vec<OutboundDevice>>();
+            .map(|d| d.try_into())
+            .collect::<Result<Vec<OutboundDevice>, _>>()?;
 
         Ok(ChannelInfo {
             channel_id,
-            user_id: other_user.id,
-            username: other_user.username,
-            nickname: other_user.nickname,
+            users: vec![user.into(), other_user.into()],
             devices,
         })
     }
@@ -596,25 +613,29 @@ impl AppState {
             .select((
                 Channel::as_select(),
                 sender.field(user::username),
+                sender.field(user::nickname),
                 recipient.field(user::username),
+                recipient.field(user::nickname),
             ))
-            .load::<(Channel, String, String)>(&mut conn)
+            .load::<(Channel, String, Option<String>, String, Option<String>)>(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
         let channels = channels
             .into_iter()
-            .map(|(channel, sender, receiver)| {
+            .map(|(channel, sender, sender_nick, receiver, receiver_nick)| {
                 if channel.sender_id == user.id {
                     ChannelResponse {
                         channel_id: channel.id,
-                        user_name: receiver,
                         user_id: channel.recipient_id,
+                        username: receiver,
+                        nickname: receiver_nick,
                     }
                 } else {
                     ChannelResponse {
                         channel_id: channel.id,
-                        user_name: sender,
                         user_id: channel.sender_id,
+                        username: sender,
+                        nickname: sender_nick,
                     }
                 }
             })
@@ -636,18 +657,17 @@ impl AppState {
             .inner_join(
                 message_payload::table.on(message::id
                     .eq(message_payload::message_id)
-                    .and(message_payload::recipient_device.eq(device_id))),
+                    .and(message_payload::recipient_device_id.eq(device_id))),
             )
             .inner_join(user::table.on(message::sender_id.eq(user::id)))
-            .inner_join(device::table.on(message_payload::recipient_device.eq(device::id)))
+            .inner_join(device::table.on(message_payload::recipient_device_id.eq(device::id)))
             .filter(message::channel_id.eq(channel_id))
             .filter(device::user_id.eq(user.id))
             .select((
                 message::id,
-                message::sender_id,
-                user::username,
-                user::nickname,
+                message::sender_device_id,
                 message_payload::ciphertext,
+                message::created,
                 message_payload::is_pre_key,
             ))
             .order(message::id.asc())
@@ -661,9 +681,15 @@ impl AppState {
         &self,
         sender: &User,
         recipient: &User,
-    ) -> Result<Channel, AppError> {
+    ) -> Result<(ChannelResponse, ChannelResponse), AppError> {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        if sender.id == recipient.id {
+            return Err(AppError::UserError(
+                "can't make chat with yourself".to_string(),
+            ));
+        }
 
         let new_channel = NewChannel {
             sender_id: sender.id,
@@ -676,7 +702,26 @@ impl AppState {
             .get_result(&mut conn)
             .map_err(|e| AppError::from(e))?;
 
-        Ok(channel)
+        let (user1, user2) = self.get_channel_participants(channel.id).await?;
+
+        let resp1 = ChannelResponse {
+            channel_id: channel.id,
+            user_id: user1.id,
+            username: user1.username,
+            nickname: user1.nickname,
+        };
+        let resp2 = ChannelResponse {
+            channel_id: channel.id,
+            user_id: user2.id,
+            username: user2.username,
+            nickname: user2.nickname,
+        };
+
+        if user1.id == sender.id {
+            Ok((resp2, resp1))
+        } else {
+            Ok((resp1, resp2))
+        }
     }
 
     pub async fn get_otk_for_device_in_channel(
@@ -684,7 +729,7 @@ impl AppState {
         user: User,
         channel_id: Uuid,
         device_id: Uuid,
-    ) -> Result<OutboundOtk, AppError> {
+    ) -> Result<Otk, AppError> {
         let pool = self.pool.clone();
         let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
 
@@ -707,7 +752,7 @@ impl AppState {
             .execute(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-        Ok(otk.into())
+        Ok(otk)
     }
 
     pub async fn save_message(
@@ -724,13 +769,12 @@ impl AppState {
             return Err(AppError::Unauthorized);
         }
 
+        let new_message = NewChatMessage::from_inbound(&user, &message);
         let payloads = message
             .payloads
-            .iter()
-            .map(|m| m.clone().try_into())
+            .into_iter()
+            .map(|m| m.to_new_message(message.message_id))
             .collect::<Result<Vec<NewMessagePayload>, _>>()?;
-
-        let new_message = NewChatMessage::from(message);
 
         let message = diesel::insert_into(message::table)
             .values(&new_message)

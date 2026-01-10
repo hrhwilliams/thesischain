@@ -42,15 +42,16 @@ diesel::table! {
     message (id) {
         id -> Uuid,
         sender_id -> Uuid,
-        sender_device -> Uuid,
+        sender_device_id -> Uuid,
         channel_id -> Uuid,
+        created -> Timestamptz,
     }
 }
 
 diesel::table! {
-    message_payload (message_id, recipient_device) {
+    message_payload (message_id, recipient_device_id) {
         message_id -> Uuid,
-        recipient_device -> Uuid,
+        recipient_device_id -> Uuid,
         ciphertext -> Bytea,
         is_pre_key -> Bool,
     }
@@ -84,9 +85,9 @@ diesel::joinable!(device -> user (user_id));
 diesel::joinable!(discord_auth_token -> user (user_id));
 diesel::joinable!(discord_info -> user (user_id));
 diesel::joinable!(message -> channel (channel_id));
-diesel::joinable!(message -> device (sender_device));
+diesel::joinable!(message -> device (sender_device_id));
 diesel::joinable!(message -> user (sender_id));
-diesel::joinable!(message_payload -> device (recipient_device));
+diesel::joinable!(message_payload -> device (recipient_device_id));
 diesel::joinable!(message_payload -> message (message_id));
 diesel::joinable!(one_time_key -> device (device_id));
 

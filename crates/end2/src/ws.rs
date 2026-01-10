@@ -3,12 +3,15 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{AppState, Channel, InboundChatMessage, NewChatMessage, OutboundChatMessage, User};
+use crate::{
+    AppState, ChannelResponse, InboundChatMessage, NewChatMessage, OutboundChatMessage, User,
+};
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum WsEvent {
-    ChannelCreated(Channel),
-    Message(String),
+    ChannelCreated(ChannelResponse),
+    Message(OutboundChatMessage),
 }
 
 // #[tracing::instrument(skip(socket, app_state))]

@@ -138,6 +138,11 @@ impl From<AppError> for ApiError {
                 message: "user does not exist".to_string(),
                 detail: None,
             },
+            AppError::UserError(s) => Self {
+                status: StatusCode::BAD_REQUEST.into(),
+                message: "bad input".to_string(),
+                detail: Some(s),
+            },
             AppError::PoolError(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "database connection failed".to_string(),
@@ -192,6 +197,7 @@ pub enum AppError {
     InvalidKeySize,
     InvalidSignature,
     NoSuchUser,
+    UserError(String),
     PoolError(String),
     QueryFailed(String),
     Unauthorized,

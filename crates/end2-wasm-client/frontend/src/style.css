@@ -1,17 +1,40 @@
 body {
-    background-color: #f8f8fe;
-font-family: sans-serif;
-margin-top: 5%;
-margin-left: 10%;
-margin-right: 10%;
+    font-family: sans-serif;
+    margin: 32px;
 }
 
 header {
-display: flex;
-justify-content: space-between;
-align-items: baseline;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
 }
 
-header>h1 {
-margin: 0;
+header > h1 {
+    margin: 0;
+}
+
+label {
+    width:200px;
+    height: 50px;
+    display:inline-block;
+}
+
+input {
+    display: block;
+}
+
+main {
+    margin: 16px;
+}
+
+a:link, a:visited {
+  color: rgb(34, 90, 194);
+  text-decoration: none;
+}
+
+a:hover, a:active {
+  text-decoration: underline;
+}
+a:active {
+  color: rgb(35, 177, 224);
 }
