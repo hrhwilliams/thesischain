@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { useClientState } from '../state'
-import { get_devices } from '../api'
+import { change_nickname, get_devices, type ApiError } from '../api'
 
+const error = ref<ApiError | null>(null)
 const nickname = ref<string>('')
 const state = useClientState()
 const loading = ref(false)
@@ -21,7 +22,31 @@ const { data: devices } = useQuery({
 })
 
 async function onSubmit() {
-    nickname.value = ''
+    error.value = null
+
+    try {
+        if (!state.user) {
+            return
+        }
+
+        loading.value = true
+
+        const response = await change_nickname(nickname.value)
+
+        if (!response.ok) {
+            error.value = response.error
+        }
+    } catch (e) {
+        console.error(e)
+        error.value = {
+            status: 0,
+            message: 'Unexpected',
+            detail: e instanceof Error ? e.message : undefined
+        }
+    } finally {
+        nickname.value = ''
+        loading.value = false
+    }
 }
 </script>
 

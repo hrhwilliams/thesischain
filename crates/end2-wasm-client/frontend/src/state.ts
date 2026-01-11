@@ -1,17 +1,20 @@
 import { defineStore } from 'pinia'
 import { get_keys, get_my_otks, get_otks_for_channel, new_device_id, upload_keys, upload_otks, type UserInfo } from './api';
 import { DeviceContext } from '../../pkg/end2_wasm_client';
-import type { Channel, ChannelInfo, MessageReceivedReply } from './api'
+import type { Channel, ChannelInfo, MessageReceivedReply, NewNickname } from './api'
 import type { ChatMessage, DeviceContextKeys, InboundChatMessage } from './device'
+import { toRaw } from 'vue';
 
 type WsEvent =
     | { type: 'channel_created', data: Channel }
     | { type: 'message', data: InboundChatMessage }
     | { type: 'message_received', data: MessageReceivedReply }
+    | { type: 'nickname_changed', data: NewNickname }
 
 export const useClientState = defineStore('session', {
     state: () => ({
         user: null as UserInfo | null,
+        known_users: {} as Record<string, UserInfo>,
         current_channel: null as string | null,
         channels: new Map<string, Channel>(),
         context: null as DeviceContext | null,
@@ -30,7 +33,7 @@ export const useClientState = defineStore('session', {
 
     actions: {
         login(user: UserInfo) {
-            this.user = user
+            this.user = structuredClone(toRaw(user))
         },
 
         logout() {
@@ -69,6 +72,11 @@ export const useClientState = defineStore('session', {
                             const received_message = this.context?.message_received(payload.data)
                             this.on_message_decrypted(payload.data.channel_id, received_message)
                             break
+                        case 'nickname_changed':
+                            if (this.user && payload.data.user_id === this.user.id) {
+                                this.set_nickname(payload.data.nickname)
+                            }
+                            break
                         default:
                             console.warn('unknown ws event', payload)
                     }
@@ -89,6 +97,20 @@ export const useClientState = defineStore('session', {
             }
 
             this.messages[channel_id].push(message)
+        },
+
+        get_messages(channel_id: string) {
+            if (this.context) {
+                try {
+                    this.messages[channel_id] = this.context.get_message_history(channel_id)
+                } catch (e) {}
+            }
+        },
+
+        set_nickname(nickname: string) {
+            if (this.user) {
+                this.user.nickname = nickname
+            }
         },
 
         add_channel(channel: Channel) {

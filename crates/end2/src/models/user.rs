@@ -4,7 +4,7 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{AppError, RegistrationError};
+use crate::{AppError, RegistrationError, is_valid_username};
 
 #[derive(Debug, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::user)]
@@ -35,9 +35,7 @@ impl TryFrom<InboundUser> for NewUser {
     type Error = RegistrationError;
 
     fn try_from(inbound: InboundUser) -> Result<Self, RegistrationError> {
-        if inbound.username.trim().len() == 0
-            || inbound.password.len() == 0
-            || inbound.username.contains("@")
+        if !is_valid_username(&inbound.username)
         {
             return Err(RegistrationError::InvalidUsernameOrPassword);
         }

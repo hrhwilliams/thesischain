@@ -23,11 +23,7 @@ use vodozemac::Curve25519PublicKey;
 use crate::models::User;
 use crate::schema::{channel, device, user, web_session};
 use crate::{
-    AppError, Channel, ChannelInfo, ChannelResponse, ChatMessage, Device, InboundChatMessage,
-    InboundDevice, InboundDiscordInfo, InboundOtks, InboundUser, LoginError, MessagePayload,
-    NewChannel, NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload, NewOtk, NewUser,
-    OAuthHandler, Otk, OutboundChatMessage, OutboundDevice, RegistrationError, WebSession, WsEvent,
-    discord_info, message, message_payload, one_time_key,
+    AppError, Channel, ChannelInfo, ChannelResponse, ChatMessage, Device, InboundChatMessage, InboundDevice, InboundDiscordInfo, InboundOtks, InboundUser, LoginError, MessagePayload, NewChannel, NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload, NewOtk, NewUser, OAuthHandler, Otk, OutboundChatMessage, OutboundDevice, RegistrationError, WebSession, WsEvent, discord_info, is_valid_nickname, is_valid_username, message, message_payload, one_time_key
 };
 
 #[derive(Clone)]
@@ -520,10 +516,51 @@ impl AppState {
 
         diesel::insert_into(one_time_key::table)
             .values(&new_otks)
-            .execute(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .execute(&mut conn)?;
 
         Ok(())
+    }
+
+    pub async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError> {
+        if !is_valid_nickname(nickname) {
+            return Err(AppError::UserError("bad username".to_string()))
+        }
+
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        diesel::update(user::table.find(user.id))
+            .set(user::nickname.eq(nickname.trim()))
+            .execute(&mut conn)?;
+
+        Ok(())
+    }
+
+    pub async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let sent_to_ids = channel::table
+            .filter(channel::sender_id.eq(user.id))
+            .select(channel::recipient_id);
+
+        let received_from_ids = channel::table
+            .filter(channel::recipient_id.eq(user.id))
+            .select(channel::sender_id);
+
+        let known_users = user::table
+            .filter(
+                user::id
+                    .eq_any(sent_to_ids)
+                    .or(user::id.eq_any(received_from_ids)),
+            )
+            .load::<User>(&mut conn)?;
+
+        Ok(known_users)
     }
 
     async fn get_channel_participants(&self, channel_id: Uuid) -> Result<(User, User), AppError> {

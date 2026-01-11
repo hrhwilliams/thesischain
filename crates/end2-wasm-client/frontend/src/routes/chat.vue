@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useQuery } from '@tanstack/vue-query'
 import { useClientState } from '../state'
 import { useRoute } from 'vue-router'
@@ -54,6 +54,10 @@ const { data: channel_info } = useQuery({
 
         return response.data
     },
+})
+
+onMounted(() => {
+    state.get_messages(channel_id)
 })
 </script>
 

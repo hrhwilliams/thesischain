@@ -7,3 +7,23 @@ where
 {
     serializer.serialize_str(&BASE64_STANDARD_NO_PAD.encode(bytes))
 }
+
+pub fn is_valid_username(name: &str) -> bool {
+    if name.len() < 3 || name.len() > 20 {
+        return false;
+    }
+
+    name.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.'
+    })
+}
+
+pub fn is_valid_nickname(name: &str) -> bool {
+    if name.trim().len() < 3 || name.len() > 20 {
+        return false;
+    }
+
+    name.chars().all(|c| {
+        !c.is_control()
+    })
+}

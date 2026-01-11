@@ -6,11 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ApiError, AppError, AppState, User, WebSession};
 
-#[derive(Serialize)]
-pub struct DiscordRedirectResponse {
-    pub url: String,
-}
-
 #[tracing::instrument(skip(app_state))]
 pub async fn get_discord_oauth_url(
     State(app_state): State<AppState>,

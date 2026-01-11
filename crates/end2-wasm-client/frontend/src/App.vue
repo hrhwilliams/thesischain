@@ -51,9 +51,9 @@ watch(user, async (new_user) => {
             <h1>{{ pageTitle }}</h1>
             <nav>
                 <div>
-                    <p v-if="state.is_logged_in">
-                        Logged in as <span v-if="state.user?.nickname" >{{ state.user?.nickname }} ({{ state.user?.username }})</span>
-                        <span v-else>{{ state.user?.username }}</span>
+                    <p v-if="state.user">
+                        Logged in as <span v-if="state.user.nickname" ><strong>{{ state.user.nickname }}</strong> ({{ state.user.username }})</span>
+                        <strong v-else>{{ state.user.username }}</strong>
                         | <RouterLink to="/">Home</RouterLink>
                         | <RouterLink to="/chats">Chats</RouterLink>
                         | <RouterLink to="/settings">Settings</RouterLink>

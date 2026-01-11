@@ -401,6 +401,23 @@ impl DeviceContext {
         Ok(serde_wasm_bindgen::to_value(&missing_otks)?)
     }
 
+    pub fn get_message_history(&self, channel_id: &str) -> Result<Vec<JsValue>, JsError> {
+        let channel_id = Uuid::from_str(channel_id)?;
+        let channel = self
+            .channels
+            .get(&channel_id)
+            .ok_or(JsError::new("Missing channel"))?;
+
+        channel
+            .message_history
+            .iter()
+            .map(|m| {
+                serde_wasm_bindgen::to_value(m)
+                    .map_err(|e| JsError::new(&e.to_string()))
+            })
+            .collect()
+    }
+
     pub fn encrypt(&mut self, channel_id: &str, message: &str) -> Result<JsValue, JsError> {
         let channel_id = Uuid::from_str(channel_id).map_err(|e| JsError::new(&e.to_string()))?;
         let message_id = Uuid::now_v7();

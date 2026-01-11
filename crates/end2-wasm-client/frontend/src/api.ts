@@ -12,6 +12,11 @@ export type UserInfo = {
    nickname?: string
 }
 
+export type NewNickname = {
+   user_id: string,
+   nickname: string
+}
+
 export type ChannelResponse = {
     channel_id: string,
     user_id: string,
@@ -110,6 +115,12 @@ export function logout(): Promise<ApiResult<void>> {
 
 export function me(): Promise<ApiResult<UserInfo>> {
     return request<UserInfo>('/me', 'GET')
+}
+
+export function change_nickname(nickname: string): Promise<ApiResult<void>> {
+    return request<void>('/me/nickname', 'POST', {
+        'nickname': nickname
+    })
 }
 
 export function get_channel_info(

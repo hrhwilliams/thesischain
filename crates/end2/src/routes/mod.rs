@@ -35,6 +35,7 @@ impl Api {
                 get(channel::get_user_device_otk),
             )
             .route("/me", get(me::me))
+            .route("/me/nickname", post(me::change_nickname))
             .route("/me/channels", get(channel::get_all_channels))
             .route("/me/device", post(device::new_device))
             .route("/me/devices", get(device::get_devices))

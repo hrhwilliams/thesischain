@@ -1,12 +1,8 @@
-use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    AppState, ChannelResponse, InboundChatMessage, NewChatMessage, OutboundChatMessage, User,
-};
+use crate::{ChannelResponse, OutboundChatMessage};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MessageId {
@@ -17,11 +13,18 @@ pub struct MessageId {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct NewNickname {
+    pub user_id: Uuid,
+    pub nickname: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum WsEvent {
     ChannelCreated(ChannelResponse),
     Message(OutboundChatMessage),
     MessageReceived(MessageId),
+    NicknameChanged(NewNickname),
 }
 
 // #[tracing::instrument(skip(socket, app_state))]
