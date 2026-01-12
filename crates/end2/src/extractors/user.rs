@@ -3,16 +3,20 @@ use axum::{
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
+use base64::{Engine, prelude::BASE64_STANDARD};
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{ApiError, AppState, ExtractError, User};
 
 impl User {
+    #[tracing::instrument(skip(app_state))]
     async fn get_user_from_parts(
         parts: &mut Parts,
         app_state: &AppState,
     ) -> Result<Self, ExtractError> {
+        tracing::info!("cookie");
+
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
@@ -37,6 +41,40 @@ impl User {
                 .await
                 .map_err(|e| ExtractError::LookupError(e))?
                 .ok_or(ExtractError::NoSession)?;
+
+            Ok(user)
+        } else if let Some(auth) = parts.headers.get("authorization") {
+            let (auth, b64) = auth
+                .to_str()
+                .map_err(|e| ExtractError::CookieError(
+                    format!("invalid authorization header: {}", e)
+                ))?
+                .split_once(' ')
+                .ok_or(ExtractError::CookieError(
+                    "invalid authorization header".to_string(),
+                ))?;
+
+            if auth != "Basic" {
+                return Err(ExtractError::CookieError(
+                    "expected basic authorization".to_string(),
+                ));
+            }
+
+            let decoded = String::from_utf8(
+                BASE64_STANDARD
+                    .decode(b64)
+                    .map_err(|e| ExtractError::CookieError(e.to_string()))?,
+            )
+            .map_err(|_| ExtractError::CookieError("invalid authorization header".to_string()))?;
+
+            let (username, password): (&str, &str) = decoded.split_once(':').ok_or(
+                ExtractError::CookieError("invalid authorization header".to_string()),
+            )?;
+
+            let user = app_state
+                .login(username, password)
+                .await
+                .map_err(|_| ExtractError::NoUser)?;
 
             Ok(user)
         } else {

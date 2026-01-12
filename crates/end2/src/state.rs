@@ -243,13 +243,14 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_user_by_username(&self, username: String) -> Result<Option<User>, AppError> {
+    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
         let mut conn = self
             .pool
             .clone()
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
+        let username = username.to_string();
         let user = tokio::task::spawn_blocking(move || {
             user::table
                 .filter(user::username.eq(username))
@@ -284,7 +285,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self, password))]
-    pub async fn login(&self, username: String, password: String) -> Result<User, LoginError> {
+    pub async fn login(&self, username: &str, password: &str) -> Result<User, LoginError> {
         tracing::info!("logging in user");
         let user = self
             .get_user_by_username(username)

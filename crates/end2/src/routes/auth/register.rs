@@ -6,12 +6,16 @@ use crate::{ApiError, AppState, InboundUser, WebSession};
 #[tracing::instrument(skip(app_state, new_user))]
 pub async fn register(
     State(app_state): State<AppState>,
-    web_session: WebSession,
+    web_session: Option<WebSession>,
     Json(new_user): Json<InboundUser>,
 ) -> Result<impl IntoResponse, ApiError> {
     let user = app_state.register_user(new_user).await?;
-    app_state
-        .insert_into_session(web_session, "user_id".to_string(), user.id)
-        .await?;
+
+    if let Some(web_session) = web_session {
+        app_state
+            .insert_into_session(web_session, "user_id".to_string(), user.id)
+            .await?;
+    }
+
     Ok(Json(user))
 }

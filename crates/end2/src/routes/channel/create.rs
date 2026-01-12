@@ -15,7 +15,7 @@ pub async fn create_channel_with(
     Json(ChannelWith { recipient }): Json<ChannelWith>,
 ) -> Result<impl IntoResponse, ApiError> {
     let recipient = app_state
-        .get_user_by_username(recipient)
+        .get_user_by_username(&recipient)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
