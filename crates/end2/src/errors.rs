@@ -7,6 +7,7 @@ use axum::{
 };
 use base64::DecodeError;
 use serde::Serialize;
+use tokio::task::JoinError;
 
 #[derive(Debug, Serialize)]
 pub struct ApiError {
@@ -176,6 +177,12 @@ impl fmt::Display for AppError {
 impl From<diesel::result::Error> for AppError {
     fn from(e: diesel::result::Error) -> Self {
         Self::QueryFailed(e.to_string())
+    }
+}
+
+impl From<JoinError> for AppError {
+    fn from(e: JoinError) -> Self {
+        Self::PoolError(e.to_string())
     }
 }
 

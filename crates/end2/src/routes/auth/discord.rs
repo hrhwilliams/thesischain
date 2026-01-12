@@ -67,7 +67,7 @@ pub async fn discord_redirect(
 
     if let Some(user) = user {
         tracing::info!("linking account");
-        app_state.link_account(user, discord_info).await?;
+        app_state.link_account(&user, discord_info).await?;
     } else {
         let user = if let Ok(user) = app_state.login_with_discord(&discord_info).await {
             tracing::info!("logging in");

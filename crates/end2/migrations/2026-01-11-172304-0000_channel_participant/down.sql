@@ -1,0 +1,1 @@
+drop table channel_participant

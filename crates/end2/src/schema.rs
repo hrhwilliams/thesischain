@@ -3,8 +3,13 @@
 diesel::table! {
     channel (id) {
         id -> Uuid,
-        sender_id -> Uuid,
-        recipient_id -> Uuid,
+    }
+}
+
+diesel::table! {
+    channel_participant (channel_id, user_id) {
+        channel_id -> Uuid,
+        user_id -> Uuid,
     }
 }
 
@@ -81,6 +86,8 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(channel_participant -> channel (channel_id));
+diesel::joinable!(channel_participant -> user (user_id));
 diesel::joinable!(device -> user (user_id));
 diesel::joinable!(discord_auth_token -> user (user_id));
 diesel::joinable!(discord_info -> user (user_id));
@@ -93,6 +100,7 @@ diesel::joinable!(one_time_key -> device (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     channel,
+    channel_participant,
     device,
     discord_auth_token,
     discord_info,

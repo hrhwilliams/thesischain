@@ -5,7 +5,7 @@ use oauth2::{
 
 use crate::{InboundDiscordAuthToken, InboundDiscordInfo, OAuthError};
 
-const DISCORD_CDN: &str = "https://cdn.discordapp.com";
+// const DISCORD_CDN: &str = "https://cdn.discordapp.com";
 const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/oauth2/authorize";
 const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 

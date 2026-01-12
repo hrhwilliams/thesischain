@@ -7,10 +7,9 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl, SelectableHelper, r2d2::ConnectionManager,
 };
-use diesel::{JoinOnDsl, alias};
 use ed25519_dalek::Signature;
 use r2d2::Pool;
 use serde::Serialize;
@@ -23,7 +22,11 @@ use vodozemac::Curve25519PublicKey;
 use crate::models::User;
 use crate::schema::{channel, device, user, web_session};
 use crate::{
-    AppError, Channel, ChannelInfo, ChannelResponse, ChatMessage, Device, InboundChatMessage, InboundDevice, InboundDiscordInfo, InboundOtks, InboundUser, LoginError, MessagePayload, NewChannel, NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload, NewOtk, NewUser, OAuthHandler, Otk, OutboundChatMessage, OutboundDevice, RegistrationError, WebSession, WsEvent, discord_info, is_valid_nickname, is_valid_username, message, message_payload, one_time_key
+    AppError, Channel, ChannelInfo, ChannelParticipant, ChatMessage, Device, InboundChatMessage,
+    InboundDevice, InboundDiscordInfo, InboundOtks, InboundUser, LoginError, MessagePayload,
+    NewChatMessage, NewDevice, NewDiscordInfo, NewMessagePayload, NewOtk, NewUser, OAuthHandler,
+    Otk, OutboundChatMessage, RegistrationError, WebSession, WsEvent, channel_participant,
+    discord_info, is_valid_nickname, message, message_payload, one_time_key,
 };
 
 #[derive(Clone)]
@@ -59,7 +62,7 @@ impl AppState {
         let mut user_websockets = self.user_websockets.write().await;
         let sender = user_websockets
             .entry(user.id)
-            .or_insert(broadcast::Sender::new(128));
+            .or_insert_with(|| broadcast::Sender::new(128));
         sender.clone()
     }
 
@@ -75,34 +78,47 @@ impl AppState {
     pub async fn notify_user(&self, user: &User, event: WsEvent) {
         tracing::info!("sending event");
         let broadcaster = self.get_broadcaster(user).await;
-        broadcaster.send(event);
+        match broadcaster.send(event) {
+            Ok(_) => {}
+            Err(e) => tracing::error!("failed to notify user: {}", e),
+        }
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn new_session(&self) -> Result<WebSession, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let session = diesel::insert_into(web_session::table)
-            .default_values()
-            .returning(WebSession::as_returning())
-            .get_result(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let session = tokio::task::spawn_blocking(move || {
+            diesel::insert_into(web_session::table)
+                .default_values()
+                .returning(WebSession::as_returning())
+                .get_result(&mut conn)
+        })
+        .await??;
 
         Ok(session)
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn get_session(&self, session_id: Uuid) -> Result<Option<WebSession>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let session = web_session::table
-            .filter(web_session::id.eq(session_id))
-            .select(WebSession::as_select())
-            .first(&mut conn)
-            .optional()
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let session = tokio::task::spawn_blocking(move || {
+            web_session::table
+                .find(session_id)
+                .select(WebSession::as_select())
+                .first(&mut conn)
+                .optional()
+        })
+        .await??;
 
         Ok(session)
     }
@@ -113,8 +129,11 @@ impl AppState {
         key: String,
         value: T,
     ) -> Result<WebSession, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let blob = match web_session.blob {
             Value::Object(mut m) => {
@@ -127,11 +146,13 @@ impl AppState {
             _ => unreachable!("only blob should be stored in web_session table"),
         };
 
-        let web_session = diesel::update(web_session::table)
-            .filter(web_session::id.eq(web_session.id))
-            .set(web_session::blob.eq(blob))
-            .get_result(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let web_session = tokio::task::spawn_blocking(move || {
+            diesel::update(web_session::table)
+                .filter(web_session::id.eq(web_session.id))
+                .set(web_session::blob.eq(blob))
+                .get_result(&mut conn)
+        })
+        .await??;
 
         Ok(web_session)
     }
@@ -141,14 +162,21 @@ impl AppState {
         web_session: &WebSession,
         key: &str,
     ) -> Result<Option<T>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let blob = web_session::table
-            .filter(web_session::id.eq(web_session.id))
-            .select(web_session::blob)
-            .get_result(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let web_session_id = web_session.id;
+
+        let blob = tokio::task::spawn_blocking(move || {
+            web_session::table
+                .find(web_session_id)
+                .select(web_session::blob)
+                .get_result(&mut conn)
+        })
+        .await??;
 
         let value = match blob {
             Value::Object(m) => m
@@ -166,8 +194,11 @@ impl AppState {
         web_session: WebSession,
         key: &str,
     ) -> Result<Option<(T, WebSession)>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let (value, blob) = match web_session.blob {
             Value::Object(mut m) => {
@@ -178,11 +209,13 @@ impl AppState {
         };
 
         if let Some(value) = value {
-            let web_session = diesel::update(web_session::table)
-                .filter(web_session::id.eq(web_session.id))
-                .set(web_session::blob.eq(blob))
-                .get_result(&mut conn)
-                .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+            let web_session = tokio::task::spawn_blocking(move || {
+                diesel::update(web_session::table)
+                    .filter(web_session::id.eq(web_session.id))
+                    .set(web_session::blob.eq(blob))
+                    .get_result(&mut conn)
+            })
+            .await??;
 
             Ok(Some((value, web_session)))
         } else {
@@ -190,55 +223,67 @@ impl AppState {
         }
     }
 
-    pub async fn get_user(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    pub async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = user::table
-            .filter(user::id.eq(user_id))
-            .select(User::as_select())
-            .first(&mut conn)
-            .optional()
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let user = tokio::task::spawn_blocking(move || {
+            user::table
+                .find(user_id)
+                .select(User::as_select())
+                .first(&mut conn)
+                .optional()
+        })
+        .await??;
 
         Ok(user)
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn get_user_by_username(&self, username: String) -> Result<Option<User>, AppError> {
-        tracing::info!("querying for user");
-        let pool = self.pool.clone();
-        let mut conn: r2d2::PooledConnection<ConnectionManager<PgConnection>> =
-            pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = user::table
-            .filter(user::username.eq(username))
-            .select(User::as_select())
-            .first(&mut conn)
-            .optional()
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let user = tokio::task::spawn_blocking(move || {
+            user::table
+                .filter(user::username.eq(username))
+                .select(User::as_select())
+                .first(&mut conn)
+                .optional()
+        })
+        .await??;
 
         Ok(user)
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError> {
-        tracing::info!("querying for user");
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .clone()
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let user = discord_info::table
-            .inner_join(user::table)
-            .filter(discord_info::discord_id.eq(discord_id))
-            .select(User::as_select())
-            .first(&mut conn)
-            .optional()
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let user = tokio::task::spawn_blocking(move || {
+            discord_info::table
+                .inner_join(user::table)
+                .filter(discord_info::discord_id.eq(discord_id))
+                .select(User::as_select())
+                .first(&mut conn)
+                .optional()
+        })
+        .await??;
 
         Ok(user)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, password))]
     pub async fn login(&self, username: String, password: String) -> Result<User, LoginError> {
         tracing::info!("logging in user");
         let user = self
@@ -279,12 +324,15 @@ impl AppState {
             .ok_or(LoginError::NoSuchUser)
     }
 
+    #[tracing::instrument(skip(self, inbound))]
     pub async fn register_with_discord(
         &self,
         inbound: InboundDiscordInfo,
     ) -> Result<User, RegistrationError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let new_user = NewUser {
             username: format!("{}@discord", inbound.username),
@@ -307,13 +355,16 @@ impl AppState {
         Ok(user)
     }
 
+    #[tracing::instrument(skip(self, inbound))]
     pub async fn link_account(
         &self,
-        user: User,
+        user: &User,
         inbound: InboundDiscordInfo,
     ) -> Result<(), RegistrationError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let new_discord_info = NewDiscordInfo::from_inbound(inbound, user.id)?;
 
@@ -327,42 +378,7 @@ impl AppState {
 
     #[tracing::instrument(skip(self, inbound))]
     pub async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError> {
-        tracing::info!(inbound.username, "registering user");
-
         let new_user: NewUser = inbound.try_into()?;
-
-        // let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-        //     new_user
-        //         .ed25519
-        //         .as_slice()
-        //         .try_into()
-        //         .map_err(|_| AppError::InvalidKeySize)?,
-        // )
-        // .map_err(|e| AppError::InvalidKey(e.to_string()))?;
-
-        // let signature = Signature::from_bytes(
-        //     new_user
-        //         .signature
-        //         .as_slice()
-        //         .try_into()
-        //         .map_err(|_| AppError::InvalidSignature)?,
-        // );
-
-        // let message = [
-        //     new_user.username.as_bytes(),
-        //     new_user.curve25519.as_slice(),
-        //     new_user.ed25519.as_slice(),
-        // ]
-        // .concat();
-
-        // verifying_key
-        //     .verify_strict(&message, &signature)
-        //     .map_err(|e| AppError::ChallengeFailed(e.to_string()))?;
-
-        // let mut conn = self
-        //     .pool
-        //     .get()
-        //     .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let mut conn = self
             .pool
@@ -373,15 +389,17 @@ impl AppState {
             .values(&new_user)
             .returning(User::as_returning())
             .get_result(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .map_err(AppError::from)?;
 
         Ok(user)
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn new_device_for(&self, user: User) -> Result<Device, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    pub async fn new_device_for(&self, user: &User) -> Result<Device, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let new_device = NewDevice {
             user_id: user.id,
@@ -392,30 +410,36 @@ impl AppState {
         let device = diesel::insert_into(device::table)
             .values(&new_device)
             .returning(Device::as_returning())
-            .get_result(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .get_result(&mut conn)?;
 
         Ok(device)
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_device(&self, user: User, device_id: Uuid) -> Result<Device, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    pub async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
+        let user_id = user.id;
 
-        let device = device::table
-            .filter(device::id.eq(device_id).and(device::user_id.eq(user.id)))
-            .select(Device::as_select())
-            .first(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+        let device = tokio::task::spawn_blocking(move || {
+            device::table
+                .filter(device::id.eq(device_id).and(device::user_id.eq(user_id)))
+                .select(Device::as_select())
+                .first(&mut conn)
+        })
+        .await??;
 
         Ok(device)
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_all_devices(&self, user: User) -> Result<Vec<Device>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    pub async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         device::table
             .filter(device::user_id.eq(user.id))
@@ -426,44 +450,58 @@ impl AppState {
 
     pub async fn set_device_keys(
         &self,
-        user: User,
+        user: &User,
         device_id: Uuid,
         device_keys: InboundDevice,
     ) -> Result<Device, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
         let new_device = NewDevice::from_network(device_id, device_keys)?;
+        let user_id = user.id;
 
-        diesel::update(device::table)
-            .filter(device::id.eq(device_id).and(device::user_id.eq(user.id)))
-            .set((
-                device::x25519.eq(new_device.x25519),
-                device::ed25519.eq(new_device.ed25519),
-            ))
-            .get_result(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))
+        let device = tokio::task::spawn_blocking(move || {
+            diesel::update(device::table)
+                .filter(device::id.eq(device_id).and(device::user_id.eq(user_id)))
+                .set((
+                    device::x25519.eq(new_device.x25519),
+                    device::ed25519.eq(new_device.ed25519),
+                ))
+                .get_result(&mut conn)
+        })
+        .await??;
+
+        Ok(device)
     }
 
     pub async fn get_otks(&self, device_id: Uuid) -> Result<Vec<Otk>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        one_time_key::table
-            .filter(one_time_key::device_id.eq(device_id))
-            .select(Otk::as_select())
-            .load(&mut conn)
-            .map_err(|e| AppError::from(e))
+        let otks = tokio::task::spawn_blocking(move || {
+            one_time_key::table
+                .filter(one_time_key::device_id.eq(device_id))
+                .select(Otk::as_select())
+                .load(&mut conn)
+        })
+        .await??;
+
+        Ok(otks)
     }
 
     pub async fn upload_otks(
         &self,
-        user: User,
+        user: &User,
         device_id: Uuid,
         otks: InboundOtks,
     ) -> Result<(), AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
         let signature = BASE64_STANDARD_NO_PAD.decode(&otks.signature)?;
         let signature = Signature::from_bytes(
             signature
@@ -475,8 +513,7 @@ impl AppState {
         let device = device::table
             .filter(device::id.eq(device_id).and(device::user_id.eq(user.id)))
             .select(Device::as_select())
-            .first(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .first(&mut conn)?;
 
         let otks: Vec<Curve25519PublicKey> = otks
             .otks
@@ -523,7 +560,7 @@ impl AppState {
 
     pub async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError> {
         if !is_valid_nickname(nickname) {
-            return Err(AppError::UserError("bad username".to_string()))
+            return Err(AppError::UserError("bad username".to_string()));
         }
 
         let mut conn = self
@@ -531,9 +568,14 @@ impl AppState {
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        diesel::update(user::table.find(user.id))
-            .set(user::nickname.eq(nickname.trim()))
-            .execute(&mut conn)?;
+        let user_id = user.id;
+        let nickname = nickname.to_string();
+        tokio::task::spawn_blocking(move || {
+            diesel::update(user::table.find(user_id))
+                .set(user::nickname.eq(nickname.trim()))
+                .execute(&mut conn)
+        })
+        .await??;
 
         Ok(())
     }
@@ -544,154 +586,102 @@ impl AppState {
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let sent_to_ids = channel::table
-            .filter(channel::sender_id.eq(user.id))
-            .select(channel::recipient_id);
+        let user_id = user.id;
+        let users = tokio::task::spawn_blocking(move || {
+            let channel_ids = channel_participant::table
+                .filter(channel_participant::user_id.eq(user_id))
+                .select(channel_participant::channel_id)
+                .load::<Uuid>(&mut conn)?;
 
-        let received_from_ids = channel::table
-            .filter(channel::recipient_id.eq(user.id))
-            .select(channel::sender_id);
-
-        let known_users = user::table
-            .filter(
-                user::id
-                    .eq_any(sent_to_ids)
-                    .or(user::id.eq_any(received_from_ids)),
-            )
-            .load::<User>(&mut conn)?;
-
-        Ok(known_users)
-    }
-
-    async fn get_channel_participants(&self, channel_id: Uuid) -> Result<(User, User), AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-        let (sender, recipient) = alias!(
-            crate::schema::user as sender,
-            crate::schema::user as recipient
-        );
-
-        let (sender, recipient) = channel::table
-            .find(channel_id)
-            .inner_join(sender.on(channel::sender_id.eq(sender.field(user::id))))
-            .inner_join(recipient.on(channel::recipient_id.eq(recipient.field(user::id))))
-            .select((
-                sender.fields(user::all_columns),
-                recipient.fields(user::all_columns),
-            ))
-            .first::<(User, User)>(&mut conn)
-            .map_err(|e| AppError::from(e))?;
-
-        Ok((sender, recipient))
-    }
-
-    async fn get_other_channel_participant(
-        &self,
-        user: &User,
-        channel_id: Uuid,
-    ) -> Result<User, AppError> {
-        let (sender, recipient) = self.get_channel_participants(channel_id).await?;
-
-        Ok(if user.id == sender.id {
-            recipient
-        } else {
-            sender
+            channel_participant::table
+                .inner_join(user::table)
+                .filter(channel_participant::channel_id.eq_any(channel_ids))
+                .distinct()
+                .select(User::as_select())
+                .load(&mut conn)
         })
+        .await??;
+
+        Ok(users)
+    }
+
+    async fn get_channel_participants(&self, channel_id: Uuid) -> Result<Vec<User>, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
+
+        let users = tokio::task::spawn_blocking(move || {
+            channel_participant::table
+                .filter(channel_participant::channel_id.eq(channel_id))
+                .inner_join(user::table.on(user::id.eq(channel_participant::user_id)))
+                .select(User::as_select())
+                .load(&mut conn)
+        })
+        .await??;
+
+        Ok(users)
     }
 
     pub async fn get_channel_info(
         &self,
-        user: User,
+        user: &User,
         channel_id: Uuid,
     ) -> Result<ChannelInfo, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let other_user = self
-            .get_other_channel_participant(&user, channel_id)
-            .await?;
+        let participants = self.get_channel_participants(channel_id).await?;
+
+        if !participants.contains(user) {
+            return Err(AppError::Unauthorized);
+        }
 
         let devices = device::table
-            .filter(
-                device::user_id
-                    .eq(other_user.id)
-                    .or(device::user_id.eq(user.id)),
-            )
+            .inner_join(user::table.on(device::user_id.eq(user.id)))
+            .filter(user::id.eq_any(participants.iter().map(|u| u.id)))
             .select(Device::as_select())
-            .load(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?
-            .into_iter()
-            .map(|d| d.try_into())
-            .collect::<Result<Vec<OutboundDevice>, _>>()?;
+            .load(&mut conn)?;
 
         Ok(ChannelInfo {
             channel_id,
-            users: vec![user.into(), other_user.into()],
+            participants,
             devices,
         })
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_user_channels(&self, user: User) -> Result<Vec<ChannelResponse>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    pub async fn get_user_channels(&self, user: &User) -> Result<Vec<Channel>, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let (sender, recipient) = alias!(
-            crate::schema::user as sender,
-            crate::schema::user as recipient
-        );
-
-        let channels = channel::table
-            .inner_join(sender.on(channel::sender_id.eq(sender.field(user::id))))
-            .inner_join(recipient.on(channel::recipient_id.eq(recipient.field(user::id))))
-            .filter(
-                channel::sender_id
-                    .eq(user.id)
-                    .or(channel::recipient_id.eq(user.id)),
-            )
-            .select((
-                Channel::as_select(),
-                sender.field(user::username),
-                sender.field(user::nickname),
-                recipient.field(user::username),
-                recipient.field(user::nickname),
-            ))
-            .load::<(Channel, String, Option<String>, String, Option<String>)>(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-        let channels = channels
-            .into_iter()
-            .map(|(channel, sender, sender_nick, receiver, receiver_nick)| {
-                if channel.sender_id == user.id {
-                    ChannelResponse {
-                        channel_id: channel.id,
-                        user_id: channel.recipient_id,
-                        username: receiver,
-                        nickname: receiver_nick,
-                    }
-                } else {
-                    ChannelResponse {
-                        channel_id: channel.id,
-                        user_id: channel.sender_id,
-                        username: sender,
-                        nickname: sender_nick,
-                    }
-                }
-            })
-            .collect();
+        let user_id = user.id;
+        let channels = tokio::task::spawn_blocking(move || {
+            channel_participant::table
+                .filter(channel_participant::user_id.eq(user_id))
+                .inner_join(channel::table.on(channel::id.eq(channel_participant::channel_id)))
+                .select(Channel::as_select())
+                .load(&mut conn)
+        })
+        .await??;
 
         Ok(channels)
     }
 
     pub async fn get_channel_history(
         &self,
-        user: User,
+        user: &User,
         channel_id: Uuid,
         device_id: Uuid,
     ) -> Result<Vec<OutboundChatMessage>, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let history = message::table
             .inner_join(
@@ -712,8 +702,7 @@ impl AppState {
                 message_payload::is_pre_key,
             ))
             .order(message::id.asc())
-            .load::<OutboundChatMessage>(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .load::<OutboundChatMessage>(&mut conn)?;
 
         Ok(history)
     }
@@ -722,74 +711,59 @@ impl AppState {
         &self,
         sender: &User,
         recipient: &User,
-    ) -> Result<(ChannelResponse, ChannelResponse), AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+    ) -> Result<ChannelInfo, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        if sender.id == recipient.id {
+        if sender == recipient {
             return Err(AppError::UserError(
                 "can't make chat with yourself".to_string(),
             ));
         }
 
-        let new_channel = NewChannel {
-            sender_id: sender.id,
-            recipient_id: recipient.id,
-        };
-
         let channel = diesel::insert_into(channel::table)
-            .values(&new_channel)
+            .default_values()
             .returning(Channel::as_returning())
-            .get_result(&mut conn)
-            .map_err(|e| AppError::from(e))?;
+            .get_result(&mut conn)?;
 
-        let (user1, user2) = self.get_channel_participants(channel.id).await?;
-
-        let resp1 = ChannelResponse {
+        let participant1 = ChannelParticipant {
             channel_id: channel.id,
-            user_id: user1.id,
-            username: user1.username,
-            nickname: user1.nickname,
-        };
-        let resp2 = ChannelResponse {
-            channel_id: channel.id,
-            user_id: user2.id,
-            username: user2.username,
-            nickname: user2.nickname,
+            user_id: sender.id,
         };
 
-        if user1.id == sender.id {
-            Ok((resp2, resp1))
-        } else {
-            Ok((resp1, resp2))
-        }
+        let participant2 = ChannelParticipant {
+            channel_id: channel.id,
+            user_id: recipient.id,
+        };
+
+        diesel::insert_into(channel_participant::table)
+            .values(&[participant1, participant2])
+            .execute(&mut conn)?;
+
+        let channel_info = self.get_channel_info(sender, channel.id).await?;
+        Ok(channel_info)
     }
 
-    pub async fn get_otk_for_device_in_channel(
-        &self,
-        user: User,
-        channel_id: Uuid,
-        device_id: Uuid,
-    ) -> Result<Otk, AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-        let other_user = self
-            .get_other_channel_participant(&user, channel_id)
-            .await?;
+    pub async fn get_user_otk(&self, user: &User, device_id: Uuid) -> Result<Otk, AppError> {
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
         let otk = one_time_key::table
             .inner_join(device::table.on(one_time_key::device_id.eq(device::id)))
             .filter(
                 one_time_key::device_id
                     .eq(device_id)
-                    .and(device::user_id.eq(other_user.id)),
+                    .and(device::user_id.eq(user.id)),
             )
             .select(Otk::as_select())
             .first(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-        diesel::delete(one_time_key::table.filter(one_time_key::id.eq(otk.id)))
+        diesel::delete(one_time_key::table.find(otk.id))
             .execute(&mut conn)
             .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
@@ -801,16 +775,18 @@ impl AppState {
         user: &User,
         message: InboundChatMessage,
     ) -> Result<(ChatMessage, Vec<MessagePayload>), AppError> {
-        let pool = self.pool.clone();
-        let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let (user1, user2) = self.get_channel_participants(message.channel_id).await?;
+        let users = self.get_channel_participants(message.channel_id).await?;
 
-        if !(user.id == user1.id || user.id == user2.id) {
+        if !users.contains(user) {
             return Err(AppError::Unauthorized);
         }
 
-        let new_message = NewChatMessage::from_inbound(&user, &message);
+        let new_message = NewChatMessage::from_inbound(user, &message);
         let payloads = message
             .payloads
             .into_iter()
@@ -820,122 +796,13 @@ impl AppState {
         let message = diesel::insert_into(message::table)
             .values(&new_message)
             .returning(ChatMessage::as_returning())
-            .get_result(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+            .get_result(&mut conn)?;
 
         let payloads = diesel::insert_into(message_payload::table)
             .values(&payloads)
             .returning(MessagePayload::as_returning())
-            .load(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+            .load(&mut conn)?;
 
         Ok((message, payloads))
     }
-
-    // pub async fn get_otk(&self, user: User) -> Result<Curve25519PublicKey, AppError> {
-    //     let pool = self.pool.clone();
-    //     let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //     let key = one_time_key::table
-    //         .filter(one_time_key::user_id.eq(user.id))
-    //         .select(Otk::as_select())
-    //         .first(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-    //     diesel::delete(one_time_key::dsl::one_time_key.filter(one_time_key::id.eq(key.id)))
-    //         .execute(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-    //     let key = Curve25519PublicKey::from_bytes(
-    //         key.otk.try_into().map_err(|_| AppError::InvalidKeySize)?,
-    //     );
-
-    //     Ok(key)
-    // }
-
-    // pub async fn count_otks(&self, user: User) -> Result<i64, AppError> {
-    //     let pool = self.pool.clone();
-    //     let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //     let count = one_time_key::table
-    //         .filter(one_time_key::user_id.eq(user.id))
-    //         .count()
-    //         .get_result(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-    //     Ok(count)
-    // }
-
-    // pub async fn publish_otks(&self, user: User, otks: Vec<String>) -> Result<(), AppError> {
-    //     let pool = self.pool.clone();
-    //     let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //     let otks = otks
-    //         .iter()
-    //         .map(|key| -> Result<NewOtk, AppError> {
-    //             Ok(NewOtk {
-    //                 user_id: user.id,
-    //                 otk: Curve25519PublicKey::from_base64(key)
-    //                     .map_err(|e| AppError::InvalidKey(e.to_string()))?
-    //                     .to_bytes(),
-    //             })
-    //         })
-    //         .collect::<Result<Vec<NewOtk>, AppError>>()?;
-
-    //     diesel::insert_into(one_time_key::table)
-    //         .values(&otks)
-    //         .execute(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-    //     Ok(())
-    // }
-
-    // pub async fn get_other_channel_participant(
-    //     &self,
-    //     user: &User,
-    //     channel_id: Uuid,
-    // ) -> Result<User, AppError> {
-    //     let pool = self.pool.clone();
-    //     let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //     let other = channel::table
-    //         .filter(channel::id.eq(channel_id))
-    //         .inner_join(
-    //             user::table.on(user::id
-    //                 .eq(channel::sender)
-    //                 .or(user::id.eq(channel::receiver))),
-    //         )
-    //         .filter(user::id.ne(user.id))
-    //         .select(User::as_select())
-    //         .first(&mut conn)
-    //         .optional()
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?
-    //         .ok_or(AppError::NoSuchUser)?;
-
-    //     Ok(other)
-    // }
-
-    // pub async fn get_channel_broadcaster(
-    //     &self,
-    //     channel_id: Uuid,
-    // ) -> broadcast::Sender<ChatMessage> {
-    //     let mut channels = self.channels.write().await;
-    //     let sender = channels
-    //         .entry(channel_id)
-    //         .or_insert(broadcast::Sender::new(128));
-    //     sender.clone()
-    // }
-
-    // pub async fn save_message(&self, new_message: NewChatMessage) -> Result<ChatMessage, AppError> {
-    //     let pool = self.pool.clone();
-    //     let mut conn = pool.get().map_err(|e| AppError::PoolError(e.to_string()))?;
-
-    //     let message = diesel::insert_into(message::table)
-    //         .values(&new_message)
-    //         .returning(ChatMessage::as_returning())
-    //         .get_result(&mut conn)
-    //         .map_err(|e| AppError::QueryFailed(e.to_string()))?;
-
-    //     Ok(message)
-    // }
 }

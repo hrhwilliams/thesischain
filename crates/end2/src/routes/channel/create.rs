@@ -1,12 +1,7 @@
-use axum::{
-    Json,
-    extract::{Path, State},
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, response::IntoResponse};
 use serde::Deserialize;
-use uuid::Uuid;
 
-use crate::{ApiError, AppError, AppState, InboundChatMessage, User, WsEvent};
+use crate::{ApiError, AppError, AppState, User, WsEvent};
 
 #[derive(Deserialize)]
 pub struct ChannelWith {
@@ -24,16 +19,16 @@ pub async fn create_channel_with(
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let (user1, user2) = app_state.create_channel_between(&user, &recipient).await?;
+    let response = app_state.create_channel_between(&user, &recipient).await?;
 
     app_state
-        .notify_user(&user, WsEvent::ChannelCreated(user1.clone()))
+        .notify_user(&user, WsEvent::ChannelCreated(response.clone()))
         .await;
     app_state
-        .notify_user(&recipient, WsEvent::ChannelCreated(user2))
+        .notify_user(&recipient, WsEvent::ChannelCreated(response.clone()))
         .await;
 
-    Ok(Json(user1))
+    Ok(Json(response))
 }
 
 // #[tracing::instrument(skip(app_state))]

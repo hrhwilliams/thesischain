@@ -33,7 +33,7 @@ impl User {
                 .ok_or(ExtractError::NoUser)?;
 
             let user = app_state
-                .get_user(user_id)
+                .get_user_info(user_id)
                 .await
                 .map_err(|e| ExtractError::LookupError(e))?
                 .ok_or(ExtractError::NoSession)?;

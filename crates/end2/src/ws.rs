@@ -2,7 +2,7 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{ChannelResponse, OutboundChatMessage};
+use crate::{Channel, ChannelInfo, OutboundChatMessage};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MessageId {
@@ -21,7 +21,7 @@ pub struct NewNickname {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum WsEvent {
-    ChannelCreated(ChannelResponse),
+    ChannelCreated(ChannelInfo),
     Message(OutboundChatMessage),
     MessageReceived(MessageId),
     NicknameChanged(NewNickname),

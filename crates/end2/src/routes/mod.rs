@@ -8,8 +8,8 @@ mod device;
 // mod channel;
 // mod key;
 mod me;
+mod user;
 mod ws;
-// mod user;
 
 pub struct Api;
 
@@ -30,10 +30,6 @@ impl Api {
                 "/channel/{channel_id}/history",
                 get(channel::get_channel_history),
             )
-            .route(
-                "/channel/{channel_id}/{device_id}/otk",
-                get(channel::get_user_device_otk),
-            )
             .route("/me", get(me::me))
             .route("/me/nickname", post(me::change_nickname))
             .route("/me/channels", get(channel::get_all_channels))
@@ -47,12 +43,16 @@ impl Api {
                 "/me/device/{device_id}/otks",
                 get(device::get_otks).post(device::upload_otks),
             )
-            // .route("/user/{user_id}", get(device::get_user_info))
-            // .route("/user/{user_id}/devices", get(device::get_user_devices))
-            // .route(
-            //     "/user/{user_id}/device/{device_id}",
-            //     get(device::get_user_device),
-            // )
+            .route("/user/{user_id}", get(user::get_user_info))
+            .route("/user/{user_id}/devices", get(device::get_user_devices))
+            .route(
+                "/user/{user_id}/device/{device_id}",
+                get(device::get_user_device),
+            )
+            .route(
+                "/user/{user_id}/device/{device_id}/otk",
+                get(device::get_user_device_otk),
+            )
             .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
     }
 }

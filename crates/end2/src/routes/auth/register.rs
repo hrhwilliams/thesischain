@@ -1,6 +1,6 @@
 use axum::{Json, extract::State, response::IntoResponse};
 
-use crate::{ApiError, AppState, InboundUser, OutboundUser, WebSession};
+use crate::{ApiError, AppState, InboundUser, WebSession};
 
 /// POST with JSON payload `{ username: string, password: string, confirm_password: string }`
 #[tracing::instrument(skip(app_state, new_user))]
@@ -13,5 +13,5 @@ pub async fn register(
     app_state
         .insert_into_session(web_session, "user_id".to_string(), user.id)
         .await?;
-    Ok(Json(OutboundUser::from(user)))
+    Ok(Json(user))
 }

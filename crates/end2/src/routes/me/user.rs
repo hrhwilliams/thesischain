@@ -1,12 +1,12 @@
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::Deserialize;
 
-use crate::{ApiError, AppState, NewNickname, OutboundUser, User, WsEvent};
+use crate::{ApiError, AppState, NewNickname, User, WsEvent};
 
 /// returns user struct if the user has the Session cookie set with a valid session token
 #[tracing::instrument]
 pub async fn me(user: User) -> impl IntoResponse {
-    Json(OutboundUser::from(user))
+    Json(user)
 }
 
 #[derive(Deserialize)]
@@ -20,15 +20,6 @@ pub async fn change_nickname(
     Json(Nickname { nickname }): Json<Nickname>,
 ) -> Result<impl IntoResponse, ApiError> {
     app_state.change_nickname(&user, &nickname).await?;
-    app_state
-        .notify_user(
-            &user,
-            WsEvent::NicknameChanged(NewNickname {
-                user_id: user.id,
-                nickname: nickname.clone(),
-            }),
-        )
-        .await;
 
     let users_to_notify = app_state.get_known_users(&user).await?;
     for other in users_to_notify {

@@ -6,14 +6,25 @@ use uuid::Uuid;
 
 use crate::{AppError, RegistrationError, is_valid_username};
 
-#[derive(Debug, Queryable, Selectable)]
+#[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::user)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     pub nickname: Option<String>,
+    #[serde(skip_serializing)]
     pub password: Option<String>,
+}
+
+impl PartialEq for User {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.id != other.id
+    }
 }
 
 #[derive(Debug, Deserialize, Insertable)]
@@ -35,8 +46,7 @@ impl TryFrom<InboundUser> for NewUser {
     type Error = RegistrationError;
 
     fn try_from(inbound: InboundUser) -> Result<Self, RegistrationError> {
-        if !is_valid_username(&inbound.username)
-        {
+        if !is_valid_username(&inbound.username) {
             return Err(RegistrationError::InvalidUsernameOrPassword);
         }
         if inbound.password != inbound.confirm_password {
@@ -54,22 +64,5 @@ impl TryFrom<InboundUser> for NewUser {
             username: inbound.username.trim().to_string(),
             password: Some(hash),
         })
-    }
-}
-
-#[derive(Serialize)]
-pub struct OutboundUser {
-    pub id: Uuid,
-    pub username: String,
-    pub nickname: Option<String>,
-}
-
-impl From<User> for OutboundUser {
-    fn from(user: User) -> Self {
-        Self {
-            id: user.id,
-            username: user.username,
-            nickname: user.nickname,
-        }
     }
 }
