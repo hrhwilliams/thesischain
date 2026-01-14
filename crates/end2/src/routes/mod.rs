@@ -33,11 +33,14 @@ impl Api {
             .route("/me", get(me::me))
             .route("/me/nickname", post(me::change_nickname))
             .route("/me/channels", get(channel::get_all_channels))
-            .route("/me/device", post(device::new_device))
+            .route(
+                "/me/device",
+                post(device::new_device).put(device::upload_keys_me),
+            )
             .route("/me/devices", get(device::get_devices))
             .route(
                 "/me/device/{device_id}",
-                get(device::get_device).post(device::upload_keys),
+                get(device::get_device).put(device::upload_keys),
             )
             .route(
                 "/me/device/{device_id}/otks",
@@ -51,7 +54,7 @@ impl Api {
             )
             .route(
                 "/user/{user_id}/device/{device_id}/otk",
-                get(device::get_user_device_otk),
+                post(device::get_user_device_otk),
             )
             .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
     }

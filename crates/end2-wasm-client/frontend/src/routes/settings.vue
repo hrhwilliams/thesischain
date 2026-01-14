@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { useClientState } from '../state'
-import { change_nickname, get_devices, type ApiError } from '../api'
+import type { ApiError } from '../api'
+import { useUserStore } from '../stores/user'
+import { useDeviceStore } from '../stores/device'
+import ErrorMessage from '../components/ErrorMessage.vue'
 
 const error = ref<ApiError | null>(null)
 const nickname = ref<string>('')
-const state = useClientState()
+const user_store = useUserStore()
+const device_store = useDeviceStore()
 const loading = ref(false)
 
 const { data: devices } = useQuery({
     queryKey: ['devices'],
-    enabled: computed(() => state.is_logged_in),
+    enabled: computed(() => user_store.logged_in),
     queryFn: async () => {
-        const response = await get_devices()
-        if (!response.ok) {
-            throw response.error
+        const response = await device_store.fetch_our_devices()
+        if (response.ok) {
+            return response.value
+        } else {
+            error.value = response.error
+            return null
         }
-        return response.data
     },
 })
 
@@ -25,13 +30,9 @@ async function onSubmit() {
     error.value = null
 
     try {
-        if (!state.user) {
-            return
-        }
-
         loading.value = true
 
-        const response = await change_nickname(nickname.value)
+        const response = await user_store.change_nickname(nickname.value)
 
         if (!response.ok) {
             error.value = response.error
@@ -52,8 +53,10 @@ async function onSubmit() {
 
 <template>
     <div class="device-list">
-        <h3>Your user ID</h3>
-        <code>{{ state.user?.id }}</code>
+        <div v-if="user_store.me">
+            <h3>Your user ID</h3>
+            <code>{{ user_store.me.id }}</code>
+        </div>
         <h3>Change nickname</h3>
         <form @submit.prevent="onSubmit">
             <label>
@@ -72,10 +75,16 @@ async function onSubmit() {
         </form>
         <h3>Connected devices</h3>
         <ul>
-            <li v-for="device in devices" :key="device.id">
-                <div v-if="device.id === state.crypto?.device_id()"><code>{{ device.id }}</code> (this device)</div>
-                <div v-else><code>{{ device.id }}</code></div>
+            <li v-for="device in devices">
+                <div v-if="device.device_id === device_store.device_id()"><code>{{ device.device_id }}</code> (this device)</div>
+                <div v-else><code>{{ device.device_id }}</code></div>
             </li>
         </ul>
+        <ErrorMessage
+            v-if="error"
+            :status="error.status"
+            :message="error.message"
+            :detail="error.detail">
+        </ErrorMessage>
     </div>
 </template>

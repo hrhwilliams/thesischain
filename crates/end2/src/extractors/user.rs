@@ -46,9 +46,9 @@ impl User {
         } else if let Some(auth) = parts.headers.get("authorization") {
             let (auth, b64) = auth
                 .to_str()
-                .map_err(|e| ExtractError::CookieError(
-                    format!("invalid authorization header: {}", e)
-                ))?
+                .map_err(|e| {
+                    ExtractError::CookieError(format!("invalid authorization header: {}", e))
+                })?
                 .split_once(' ')
                 .ok_or(ExtractError::CookieError(
                     "invalid authorization header".to_string(),

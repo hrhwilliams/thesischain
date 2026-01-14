@@ -7,4 +7,10 @@ import router from './router'
 
 const pinia = createPinia()
 
-createApp(App).use(pinia).use(router).use(VueQueryPlugin).mount('#app')
+const app = createApp(App)
+    .use(pinia)
+    .use(router)
+    .use(VueQueryPlugin)
+
+app.mount('#app')
+    

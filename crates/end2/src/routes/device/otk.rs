@@ -34,6 +34,7 @@ pub async fn upload_otks(
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 
+#[tracing::instrument(skip(app_state))]
 pub async fn get_user_device_otk(
     State(app_state): State<AppState>,
     _user: User,

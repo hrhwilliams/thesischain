@@ -5,17 +5,17 @@ import { onMounted } from 'vue'
 
 const hyphenate = createHyphenator(enUsPatterns)
 
-onMounted(async () => {
-    await document.fonts.ready
-    const paragraphs = Array.from(document.querySelectorAll('p'))
-    justifyContent(paragraphs, hyphenate)
-})
+// onMounted(async () => {
+//     await document.fonts.ready
+//     const paragraphs = Array.from(document.querySelectorAll('p'))
+//     justifyContent(paragraphs, hyphenate)
+// })
 </script>
 
 <template>
     <h2>About</h2>
     <p>
-        Hi, all! This is End2, a very basic <a href="https://en.wikipedia.org/wiki/End-to-end_encryption">end-to-end encrypted</a>
+        Hi! This is End2, a very basic <a href="https://en.wikipedia.org/wiki/End-to-end_encryption">end-to-end encrypted</a>
         messaging app I made as part of my thesis. End to end encryption means that messages you send are encrypted on your side,
         and only ever able to be decrypted by the other person you&#x2019;re talking with. This works by generating cryptographic
         key pairs on your device which are used to encrypt and decrypt messages. The private parts of these keys never leave your
@@ -76,6 +76,7 @@ onMounted(async () => {
 
 <style>
     main {
+        text-align: justify;
         max-width: 610px;
     }
 </style>

@@ -1,59 +1,73 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
-import { me } from './api'
-import { useClientState } from './state'
+import { useUserStore } from './stores/user'
+import { request, type ApiError } from './api'
+import type { UserInfo } from './types/user'
+import { useDeviceStore } from './stores/device'
+import { useWebSocketStore } from './stores/socket'
+import ErrorMessage from './components/ErrorMessage.vue'
 
 const route = useRoute()
-const state = useClientState()
 let pageTitle = computed(() => route.meta.title || 'End2')
 
-const { data: user } = useQuery({
+const user_store = useUserStore()
+const device_store = useDeviceStore()
+const socket = useWebSocketStore()
+
+const error = ref<ApiError | null>(null)
+
+const { } = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
-        const response = await me()
+        const response = await request<UserInfo>('/me', 'GET')
 
         if (response.ok) {
-            return response.data
+            user_store.login(response.value)
+            error.value = null
+            return response.value
+        } else {
+            if (response.error.status != 401) {
+                error.value = response.error
+            }
+            return null
         }
-        return null
     },
     retry: false,
 })
 
-watch(user, async (new_user) => {
-    if (!state.is_logged_in && new_user) {
-        state.login(new_user)
-    }
-
-    if (state.is_logged_in) {
-        if (!state.crypto) {
-            await state.init_device()
-        }
-
-        if (state.crypto) {
-            await state.upload_otks()
-
-            if (!state.ws) {
-                state.init_ws()
+watch(
+    () => user_store.me,
+    async (me) => {
+        if (me) {
+            const response = await device_store.init(me)
+            if (!response.ok) {
+                error.value = response.error
             }
+
+            const response2 = await device_store.otks()
+            if (!response2.ok) {
+                error.value = response2.error
+            }
+
+            socket.connect(device_store.device_id()!)
+        } else {
+            socket.disconnect()
         }
     }
-})
-
-// onUnmounted(() => disconnect_websocket())
+)
 </script>
 
 <template>
-    <div class="container">
+    <div class="navbar">
         <header>
             <h1>{{ pageTitle }}</h1>
             <nav>
                 <div>
-                    <p v-if="state.user">
-                        Logged in as <span v-if="state.user.nickname" ><strong>{{ state.user.nickname }}</strong> ({{ state.user.username }})</span>
-                        <strong v-else>{{ state.user.username }}</strong>
+                    <p v-if="user_store.logged_in && user_store.me">
+                        Logged in as <span v-if="user_store.me.nickname"><strong>{{ user_store.me.nickname }}</strong> ({{ user_store.me.username }})</span>
+                        <strong v-else>{{ user_store.me!.username }}</strong>
                         | <RouterLink to="/">Home</RouterLink>
                         | <RouterLink to="/chats">Chats</RouterLink>
                         | <RouterLink to="/settings">Settings</RouterLink>
@@ -70,6 +84,12 @@ watch(user, async (new_user) => {
         <hr>
     </div>
     <main>
-        <router-view />
+        <router-view></router-view>
+        <ErrorMessage
+            v-if="error"
+            :status="error.status"
+            :message="error.message"
+            :detail="error.detail">
+        </ErrorMessage>
     </main>
 </template>

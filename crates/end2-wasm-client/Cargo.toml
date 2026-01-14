@@ -6,6 +6,11 @@ edition.workspace = true
 [lib]
 crate-type = ["cdylib"]
 
+[lints.clippy]
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
 [dependencies]
 base64.workspace = true
 serde.workspace = true

@@ -2,9 +2,10 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQueryClient } from '@tanstack/vue-query'
-import type { ApiError } from '../api';
-import { register } from '../api';
-import { useClientState } from '../state';
+import { request, type ApiError } from '../api';
+import ErrorMessage from '../components/ErrorMessage.vue';
+import type { UserInfo } from '../types/user';
+import { useUserStore } from '../stores/user';
 
 const username = ref('')
 const password = ref('')
@@ -13,7 +14,7 @@ const error = ref<ApiError | null>(null)
 const loading = ref(false)
 const router = useRouter()
 const query = useQueryClient()
-const state = useClientState()
+const user_store = useUserStore()
 
 async function onSubmit() {
     error.value = null
@@ -21,15 +22,15 @@ async function onSubmit() {
     try {
         loading.value = true
 
-        const response = await register({
+        const response = await request<UserInfo>('/auth/register', 'POST', {
             username: username.value,
             password: password.value,
             confirm_password: confirm_password.value,
         })
 
         if (response.ok) {
-            state.login(response.data)
-            query.setQueryData(['me'], response.data);
+            user_store.login(response.value)
+            query.setQueryData(['me'], response.value);
             router.replace('/chats')
         } else {
             error.value = response.error
@@ -84,9 +85,11 @@ async function onSubmit() {
             {{ loading ? 'Registering' : 'Register' }}
         </button>
     </form>
-    <p v-if="error" class="error">
-        <strong>Error response from server</strong><br>{{ error.message }}
-        <span v-if="error.detail">: {{ error.detail }}</span>
-    </p>
+    <ErrorMessage
+        v-if="error"
+        :status="error.status"
+        :message="error.message"
+        :detail="error.detail">
+    </ErrorMessage>
     </div>
 </template>

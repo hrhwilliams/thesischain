@@ -30,6 +30,7 @@ pub struct NewDevice {
 
 #[derive(Debug, Deserialize)]
 pub struct InboundDevice {
+    pub device_id: Option<Uuid>,
     pub ed25519: String,
     pub x25519: String,
     pub signature: String,

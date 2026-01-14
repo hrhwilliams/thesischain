@@ -65,7 +65,7 @@ impl App {
             ))
             .layer(
                 CorsLayer::new()
-                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
                     .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
                     .allow_origin([
                         "http://127.0.0.1:8080".parse().unwrap(),

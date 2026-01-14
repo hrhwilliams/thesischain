@@ -2,26 +2,35 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { useClientState } from '../state'
-import { logout } from '../api'
+import { request } from '../api'
+import { useUserStore } from '../stores/user'
 
 const query = useQueryClient()
 const router = useRouter()
-const state = useClientState()
+const user_store = useUserStore()
+
+async function logout() {
+    return await request<void>('/auth/logout', 'POST')
+}
 
 const { mutate } = useMutation({
     mutationFn: logout,
     onSuccess: () => {
-        query.setQueryData(['me'], null);
-        state.logout()
-        query.removeQueries();
+        user_store.logout()
+        query.clear()
         router.replace('/')
-    }
-});
+    },
+    onError: (err) => {
+        console.error('Logout failed', err)
+        user_store.logout()
+        query.clear()
+        router.replace('/')
+    },
+})
 
 onMounted(() => {
-    mutate();
-});
+    mutate()
+})
 </script>
 
 <template></template>

@@ -424,6 +424,8 @@ impl AppState {
             .map_err(|e| AppError::PoolError(e.to_string()))?;
         let user_id = user.id;
 
+        tracing::debug!("querying for device");
+
         let device = tokio::task::spawn_blocking(move || {
             device::table
                 .filter(device::id.eq(device_id).and(device::user_id.eq(user_id)))
@@ -493,6 +495,7 @@ impl AppState {
         Ok(otks)
     }
 
+    #[tracing::instrument(skip(self, otks))]
     pub async fn upload_otks(
         &self,
         user: &User,
@@ -503,9 +506,10 @@ impl AppState {
             .pool
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
-        let signature = BASE64_STANDARD_NO_PAD.decode(&otks.signature)?;
-        let signature = Signature::from_bytes(
-            signature
+
+        let created_signature = BASE64_STANDARD_NO_PAD.decode(&otks.created_signature)?;
+        let created_signature = Signature::from_bytes(
+            created_signature
                 .as_slice()
                 .try_into()
                 .map_err(|_| AppError::InvalidSignature)?,
@@ -516,15 +520,15 @@ impl AppState {
             .select(Device::as_select())
             .first(&mut conn)?;
 
-        let otks: Vec<Curve25519PublicKey> = otks
-            .otks
+        let created_otks: Vec<Curve25519PublicKey> = otks
+            .created
             .iter()
             .map(|k| {
                 Curve25519PublicKey::from_base64(k).map_err(|e| AppError::InvalidKey(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let message = otks
+        let message = created_otks
             .iter()
             .map(|k| k.as_bytes() as &[u8])
             .collect::<Vec<&[u8]>>()
@@ -541,10 +545,10 @@ impl AppState {
         .map_err(|e| AppError::InvalidKey(e.to_string()))?;
 
         verifying_key
-            .verify_strict(&message, &signature)
+            .verify_strict(&message, &created_signature)
             .map_err(|e| AppError::ChallengeFailed(e.to_string()))?;
 
-        let new_otks = otks
+        let new_otks = created_otks
             .into_iter()
             .map(|k| NewOtk {
                 device_id,
@@ -555,6 +559,40 @@ impl AppState {
         diesel::insert_into(one_time_key::table)
             .values(&new_otks)
             .execute(&mut conn)?;
+
+        if let Some(removed_signature) = otks.removed_signature {
+            tracing::info!("removing {} keys", otks.removed.len());
+
+            let removed_signature = BASE64_STANDARD_NO_PAD.decode(&removed_signature)?;
+            let removed_signature = Signature::from_bytes(
+                removed_signature
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| AppError::InvalidSignature)?,
+            );
+
+            let removed_otks: Vec<Curve25519PublicKey> = otks
+                .removed
+                .iter()
+                .map(|k| {
+                    Curve25519PublicKey::from_base64(k)
+                        .map_err(|e| AppError::InvalidKey(e.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let removed_otks = removed_otks
+                .iter()
+                .map(|k| k.as_bytes() as &[u8])
+                .collect::<Vec<&[u8]>>();
+
+            verifying_key
+                .verify_strict(&removed_otks.concat(), &removed_signature)
+                .map_err(|e| AppError::ChallengeFailed(e.to_string()))?;
+
+            diesel::delete(one_time_key::table)
+                .filter(one_time_key::otk.eq_any(removed_otks))
+                .execute(&mut conn)?;
+        }
 
         Ok(())
     }

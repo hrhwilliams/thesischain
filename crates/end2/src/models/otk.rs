@@ -24,6 +24,8 @@ pub struct NewOtk {
 
 #[derive(Deserialize)]
 pub struct InboundOtks {
-    pub otks: Vec<String>,
-    pub signature: String,
+    pub created: Vec<String>,
+    pub removed: Vec<String>,
+    pub created_signature: String,
+    pub removed_signature: Option<String>,
 }

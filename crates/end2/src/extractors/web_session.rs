@@ -1,4 +1,7 @@
-use axum::{extract::{FromRequestParts, OptionalFromRequestParts}, http::request::Parts};
+use axum::{
+    extract::{FromRequestParts, OptionalFromRequestParts},
+    http::request::Parts,
+};
 use axum_extra::extract::CookieJar;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -27,7 +30,10 @@ impl FromRequestParts<AppState> for WebSession {
 impl OptionalFromRequestParts<AppState> for WebSession {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Option<Self>, ApiError> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        app_state: &AppState,
+    ) -> Result<Option<Self>, ApiError> {
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
@@ -38,9 +44,9 @@ impl OptionalFromRequestParts<AppState> for WebSession {
                 .get_session(session_id)
                 .await?
                 .ok_or(ExtractError::NoSession)?;
-    
+
             Ok(Some(session))
-        } else{
+        } else {
             Ok(None)
         }
     }
