@@ -3,11 +3,12 @@ export type DecryptedMessage = {
     channel_id: string,
     author_id: string,
     plaintext: string,
-    timestamp: Date
+    timestamp: Date,
 }
 
 export type InboundChatMessage = {
     message_id: string,
+    author_id: string,
     device_id: string,
     channel_id: string,
     ciphertext: string,
@@ -15,3 +16,15 @@ export type InboundChatMessage = {
     is_pre_key: boolean,
 }
 
+export type EncryptedMessagePayload = {
+    recipient_device_id: string,
+    ciphertext: string,
+    is_pre_key: boolean,
+}
+
+export type EncryptedMessage = {
+    message_id: string,
+    device_id: string,
+    channel_id: string,
+    payloads: EncryptedMessagePayload[],
+}

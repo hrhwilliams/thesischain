@@ -10,7 +10,6 @@ use uuid::Uuid;
 use crate::{ApiError, AppState, ExtractError, User};
 
 impl User {
-    #[tracing::instrument(skip(app_state))]
     async fn get_user_from_parts(
         parts: &mut Parts,
         app_state: &AppState,

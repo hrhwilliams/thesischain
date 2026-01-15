@@ -50,6 +50,7 @@ pub struct OutboundChatMessage {
     pub message_id: Uuid,
     pub device_id: Uuid,
     pub channel_id: Uuid,
+    pub author_id: Uuid,
     #[serde(serialize_with = "serialize_as_base64")]
     pub ciphertext: Vec<u8>,
     #[serde(with = "time::serde::rfc3339")]

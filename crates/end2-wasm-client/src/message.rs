@@ -5,6 +5,8 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 pub struct InboundChatMessage {
     pub message_id: Uuid,
+    pub device_id: Uuid,
+    pub channel_id: Uuid,
     pub ciphertext: String, // b64encoded
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,

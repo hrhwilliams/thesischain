@@ -60,6 +60,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                         for payload in devices_payload {
                             if let Some(recipient) = app_state.get_broadcaster_for_device(payload.recipient_device_id).await {
                                 let outbound = OutboundChatMessage {
+                                    author_id: message.sender_id,
                                     message_id: message.id,
                                     device_id: message.sender_device_id,
                                     channel_id: message.channel_id,

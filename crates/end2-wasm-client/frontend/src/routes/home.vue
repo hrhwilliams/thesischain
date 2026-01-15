@@ -13,6 +13,7 @@ const hyphenate = createHyphenator(enUsPatterns)
 </script>
 
 <template>
+    <article>
     <h2>About</h2>
     <p>
         Hi! This is End2, a very basic <a href="https://en.wikipedia.org/wiki/End-to-end_encryption">end-to-end encrypted</a>
@@ -72,11 +73,14 @@ const hyphenate = createHyphenator(enUsPatterns)
        "is_pre_key":true
      }
     </pre>
+    </article>
 </template>
 
-<style>
-    main {
-        text-align: justify;
-        max-width: 610px;
-    }
+<style scoped>
+article {
+    text-align: justify;
+    /* hyphens: auto; */
+    max-width: 660px;
+    margin: auto;
+}
 </style>

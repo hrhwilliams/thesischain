@@ -53,10 +53,21 @@ export const useChannelStore = defineStore('channel', () => {
         }
     }
 
+    function get_devices(channel_id: string) {
+        const info = channels.value[channel_id]
+        if (info) {
+            return info.devices
+        }
+
+        return []
+    }
+
     return {
         channel_list,
         add_channel,
         fetch_channels,
+        fetch_channel,
         get_participants,
+        get_devices,
     }
 })

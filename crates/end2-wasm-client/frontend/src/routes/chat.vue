@@ -24,14 +24,15 @@ const channel_id = route.params.chat_id as string;
     </ErrorMessage>
 </template>
 
-<style>
+<style scoped>
 .chat-container {
     display: flex;
     flex-direction: column;
-    width: 450px;
+    width: 550px;
     height: 720px;
     border: 1px solid #ccc;
     border-radius: 4px;
     overflow: hidden;
+    margin: auto;
 }
 </style>

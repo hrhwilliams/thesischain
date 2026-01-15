@@ -83,6 +83,3 @@ async function onSubmit() {
     </ErrorMessage>
     </div>
 </template>
-
-<style>
-</style>

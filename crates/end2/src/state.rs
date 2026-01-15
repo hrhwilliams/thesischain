@@ -662,6 +662,7 @@ impl AppState {
         Ok(users)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_channel_info(
         &self,
         user: &User,
@@ -679,8 +680,9 @@ impl AppState {
         }
 
         let devices = device::table
-            .inner_join(user::table.on(device::user_id.eq(user.id)))
+            .inner_join(user::table.on(device::user_id.eq(user::id)))
             .filter(user::id.eq_any(participants.iter().map(|u| u.id)))
+            .distinct()
             .select(Device::as_select())
             .load(&mut conn)?;
 
@@ -736,6 +738,7 @@ impl AppState {
                 message::id,
                 message::sender_device_id,
                 message::channel_id,
+                message::sender_id,
                 message_payload::ciphertext,
                 message::created,
                 message_payload::is_pre_key,

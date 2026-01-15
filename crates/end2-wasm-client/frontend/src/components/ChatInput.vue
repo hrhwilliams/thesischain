@@ -1,21 +1,53 @@
 <script setup lang="ts">
-import { ref, toRef } from 'vue';
+import { computed, onMounted, ref, toRef } from 'vue';
 import { db } from '../db';
 import { v7 } from 'uuid';
 import { useWebSocketStore } from '../stores/socket';
+import { useDeviceStore } from '../stores/device';
+import { useChannelStore } from '../stores/channel';
+import type { EncryptedMessage } from '../types/message';
 
 const props = defineProps({
     channel_id: { type: String, required: true }
 })
 const channel_id = toRef(props, 'channel_id')
 const message_input = ref('');
+const devices = computed(() => channel_store.get_devices(channel_id.value))
 
 const socket = useWebSocketStore()
+const channel_store = useChannelStore()
+const device_store = useDeviceStore()
 
 async function send_message() {
+    if (message_input.value.trim().length === 0) {
+        return
+    }
+
+    let message: EncryptedMessage = {
+        message_id: v7(),
+        device_id: device_store.device_id()!,
+        channel_id: channel_id.value,
+        payloads: [],
+    }
+
+    for (const device of devices.value) {
+        if (device.device_id !== device_store.device_id()) {
+            const payload = await device_store.encrypt(channel_id.value, device, message_input.value.trim())
+            if (payload.ok) {
+                message.payloads.push(payload.value)
+            } else {
+                console.error(payload.error)
+            }
+        }
+    }
+
+    socket.send(message)
     message_input.value = ''
-    const uuid = v7()
 }
+
+onMounted(() => {
+    channel_store.fetch_channel(channel_id.value)
+})
 </script>
 
 <template>

@@ -7,6 +7,12 @@ export type DeviceInfo = {
     ed25519?: string,
 }
 
+export type Otk = {
+    id: string,
+    device_id: string,
+    otk: string
+}
+
 export type UploadDeviceKeys = {
     device_id?: string,
     x25519: string,

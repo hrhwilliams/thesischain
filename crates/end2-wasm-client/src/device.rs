@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -12,6 +12,18 @@ use vodozemac::{
 use wasm_bindgen::prelude::*;
 
 use crate::message::{DecryptedMessage, InboundChatMessage, MessagePayload};
+
+#[derive(Serialize)]
+pub struct EncryptionOutput {
+    pub session: SessionPickle,
+    pub payload: MessagePayload,
+}
+
+#[derive(Serialize)]
+pub struct DecryptionOutput {
+    pub session: SessionPickle,
+    pub payload: DecryptedMessage,
+}
 
 #[derive(Deserialize)]
 pub struct DeviceInfo {
@@ -41,7 +53,6 @@ pub struct IdentityKeys {
 pub struct PickledDevice {
     account: AccountPickle,
     device_id: Uuid,
-    sessions: HashMap<Uuid, HashMap<Uuid, SessionPickle>>,
 }
 
 impl From<PickledDevice> for Device {
@@ -49,20 +60,6 @@ impl From<PickledDevice> for Device {
         Self {
             account: Account::from_pickle(pickle.account),
             device_id: pickle.device_id,
-            sessions: pickle
-                .sessions
-                .into_iter()
-                .map(|(channel_id, device_map)| {
-                    let inner = device_map
-                        .into_iter()
-                        .map(|(device_id, session_pickle)| {
-                            (device_id, Session::from_pickle(session_pickle))
-                        })
-                        .collect();
-
-                    (channel_id, inner)
-                })
-                .collect(),
         }
     }
 }
@@ -71,8 +68,6 @@ impl From<PickledDevice> for Device {
 pub struct Device {
     account: Account,
     device_id: Uuid,
-    // channel_id -> device_id -> session
-    sessions: HashMap<Uuid, HashMap<Uuid, Session>>,
 }
 
 #[wasm_bindgen]
@@ -81,7 +76,6 @@ impl Device {
         Ok(Self {
             device_id: Uuid::from_str(device_id)?,
             account: Account::new(),
-            sessions: HashMap::default(),
         })
     }
 
@@ -93,17 +87,6 @@ impl Device {
         let pickle = PickledDevice {
             account: self.account.pickle(),
             device_id: self.device_id,
-            sessions: self
-                .sessions
-                .iter()
-                .map(|(channel_id, device_map)| {
-                    let inner = device_map
-                        .iter()
-                        .map(|(device_id, session)| (*device_id, session.pickle()))
-                        .collect();
-                    (*channel_id, inner)
-                })
-                .collect(),
         };
 
         Ok(serde_wasm_bindgen::to_value(&pickle)?)
@@ -133,20 +116,15 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&payload)?)
     }
 
-    pub fn need_otk(&self, channel_id: &str, device_id: &str) -> Result<bool, JsError> {
-        let channel_id = Uuid::from_str(channel_id)?;
-        let device_id = Uuid::from_str(device_id)?;
-
-        Ok(self
-            .sessions
-            .get(&channel_id)
-            .and_then(|channel_map| channel_map.get(&device_id))
-            .is_some_and(|session| !session.has_received_message()))
+    pub fn needs_otk(&self, pickle: JsValue) -> Result<bool, JsError> {
+        let pickle = serde_wasm_bindgen::from_value::<SessionPickle>(pickle)?;
+        let session = Session::from(pickle);
+        Ok(!session.has_received_message())
     }
 
     pub fn gen_otks(&mut self, mut count: usize) -> Result<JsValue, JsError> {
         if count > self.account.max_number_of_one_time_keys() {
-            count = self.account.max_number_of_one_time_keys()
+            count = self.account.max_number_of_one_time_keys();
         }
 
         let otks = self.account.generate_one_time_keys(count);
@@ -183,43 +161,41 @@ impl Device {
     }
 
     pub fn encrypt(
-        &mut self,
-        channel_id: &str,
-        device_id: &str,
+        &self,
+        pickle: JsValue,
+        device: JsValue,
         plaintext: &str,
     ) -> Result<JsValue, JsError> {
-        let channel_id = Uuid::from_str(channel_id)?;
-        let device_id = Uuid::from_str(device_id)?;
-        let session = self
-            .sessions
-            .get_mut(&channel_id)
-            .and_then(|channel_map| channel_map.get_mut(&device_id))
-            .ok_or_else(|| JsError::new("missing session"))?;
+        let pickle = serde_wasm_bindgen::from_value::<SessionPickle>(pickle)?;
+        let device = serde_wasm_bindgen::from_value::<DeviceInfo>(device)?;
+        let mut session = Session::from_pickle(pickle);
+
         let OlmMessage::Normal(msg) = session.encrypt(plaintext) else {
-            return Err(JsError::new("expected PreKey message"));
+            return Err(JsError::new("expected Normal message"));
         };
 
         let payload = MessagePayload {
-            recipient_device_id: device_id,
+            recipient_device_id: device.device_id,
             ciphertext: msg.to_base64(),
             is_pre_key: false,
         };
 
-        Ok(serde_wasm_bindgen::to_value(&payload)?)
+        let session = session.pickle();
+
+        let output = EncryptionOutput { session, payload };
+
+        Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
     pub fn encrypt_otk(
-        &mut self,
-        channel_id: &str,
+        &self,
         device: JsValue,
         plaintext: &str,
         otk: &str,
     ) -> Result<JsValue, JsError> {
-        let channel_id = Uuid::from_str(channel_id)?;
         let device: DeviceInfo = serde_wasm_bindgen::from_value(device)?;
         let otk = Curve25519PublicKey::from_base64(otk)?;
         let identity_key = Curve25519PublicKey::from_base64(&device.x25519)?;
-
         let mut session =
             self.account
                 .create_outbound_session(SessionConfig::version_2(), identity_key, otk);
@@ -227,60 +203,79 @@ impl Device {
             return Err(JsError::new("expected PreKey message"));
         };
 
-        self.sessions
-            .entry(channel_id)
-            .or_default()
-            .insert(device.device_id, session);
-
         let payload = MessagePayload {
             recipient_device_id: device.device_id,
             ciphertext: pkm.to_base64(),
             is_pre_key: true,
         };
 
-        Ok(serde_wasm_bindgen::to_value(&payload)?)
+        let output = EncryptionOutput {
+            session: session.pickle(),
+            payload,
+        };
+
+        Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
     pub fn decrypt(
         &mut self,
-        channel_id: &str,
+        pickle: JsValue,
         device: JsValue,
         payload: JsValue,
     ) -> Result<JsValue, JsError> {
-        let channel_id = Uuid::from_str(channel_id)?;
+        let pickle = serde_wasm_bindgen::from_value::<SessionPickle>(pickle)?;
         let device: DeviceInfo = serde_wasm_bindgen::from_value(device)?;
         let payload: InboundChatMessage = serde_wasm_bindgen::from_value(payload)?;
+        let mut session = Session::from_pickle(pickle);
 
-        let plaintext = if payload.is_pre_key {
-            let pkm = PreKeyMessage::from_base64(&payload.ciphertext)?;
-            let identity_key = Curve25519PublicKey::from_base64(&device.x25519)?;
-            let result = self.account.create_inbound_session(identity_key, &pkm)?;
-            self.sessions
-                .entry(channel_id)
-                .or_default()
-                .insert(device.device_id, result.session);
+        let msg = Message::from_base64(&payload.ciphertext)?;
+        let plaintext_bytes = session.decrypt(&OlmMessage::Normal(msg))?;
 
-            String::from_utf8(result.plaintext)?
-        } else {
-            let session = self
-                .sessions
-                .get_mut(&channel_id)
-                .and_then(|channel_map| channel_map.get_mut(&device.device_id))
-                .ok_or_else(|| JsError::new("missing session"))?;
-            let msg = Message::from_base64(&payload.ciphertext)?;
-            let plaintext_bytes = session.decrypt(&OlmMessage::Normal(msg))?;
-
-            String::from_utf8(plaintext_bytes)?
-        };
+        let plaintext = String::from_utf8(plaintext_bytes)?;
 
         let decrypted = DecryptedMessage {
             message_id: payload.message_id,
-            channel_id,
+            channel_id: payload.channel_id,
             author_id: device.user_id,
             plaintext,
             timestamp: payload.timestamp,
         };
 
-        Ok(serde_wasm_bindgen::to_value(&decrypted)?)
+        let output = DecryptionOutput {
+            session: session.pickle(),
+            payload: decrypted,
+        };
+
+        Ok(serde_wasm_bindgen::to_value(&output)?)
+    }
+
+    pub fn decrypt_otk(
+        &mut self,
+        device: JsValue,
+        payload: JsValue,
+    ) -> Result<JsValue, JsError> {
+        let device: DeviceInfo = serde_wasm_bindgen::from_value(device)?;
+        let payload: InboundChatMessage = serde_wasm_bindgen::from_value(payload)?;
+
+        let identity_key = Curve25519PublicKey::from_base64(&device.x25519)?;
+        let pkm = PreKeyMessage::from_base64(&payload.ciphertext)?;
+
+        let result = self.account.create_inbound_session(identity_key, &pkm)?;
+        let plaintext = String::from_utf8(result.plaintext)?;
+
+        let decrypted = DecryptedMessage {
+            message_id: payload.message_id,
+            channel_id: payload.channel_id,
+            author_id: device.user_id,
+            plaintext,
+            timestamp: payload.timestamp,
+        };
+
+        let output = DecryptionOutput {
+            session: result.session.pickle(),
+            payload: decrypted,
+        };
+
+        Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 }
