@@ -3,6 +3,10 @@ import { computed, ref } from "vue";
 import { request } from "../api";
 import { useUserStore } from "./user";
 import type { ChannelInfo } from "../types/channel";
+import type { InboundChatMessage, DecryptedMessage } from "../types/message";
+import { db } from "../db";
+import { useDeviceStore } from "./device";
+import Dexie from "dexie";
 
 export type Channel = {
     channel_id: string
@@ -62,6 +66,56 @@ export const useChannelStore = defineStore('channel', () => {
         return []
     }
 
+    async function save_message(decrypted: DecryptedMessage) {
+        try {
+            const normalized = {
+                ...decrypted,
+                timestamp: new Date(decrypted.timestamp)
+            }
+
+            await db.messages.put(normalized);
+        } catch (e) {
+            console.error('failed to save message:', e)
+            throw e
+        }
+    }
+
+    async function fetch_chat_history(channel_id: string) {
+        const channel_store = useChannelStore()
+        const device_store = useDeviceStore()
+
+        const last_message = await db.messages
+            .where('[channel_id+timestamp]')
+            .between(
+                [channel_id, Dexie.minKey], 
+                [channel_id, Dexie.maxKey]
+            )
+            .last();
+
+        if (!device_store.device_id()) {
+            return
+        }
+
+        let params = new URLSearchParams({ 
+            device: device_store.device_id()!
+        })
+        
+        if (last_message) {
+            params.append('after', last_message.message_id)
+        }
+
+        const response = await request<InboundChatMessage[]>(`/channel/${channel_id}/history?${params}`, 'GET')
+        if (response.ok) {
+            for (const message of response.value) {
+                const decrypted = await device_store.decrypt(message)
+
+                if (decrypted.ok) {
+                    await channel_store.save_message(decrypted.value)
+                }
+            }
+        }
+    }
+
     return {
         channel_list,
         add_channel,
@@ -69,5 +123,7 @@ export const useChannelStore = defineStore('channel', () => {
         fetch_channel,
         get_participants,
         get_devices,
+        save_message,
+        fetch_chat_history
     }
 })

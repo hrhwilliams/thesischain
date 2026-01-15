@@ -27,6 +27,10 @@ const messages = useObservable(from(
             .toArray()
     }))
 )
+
+onMounted(async () => {
+    await channel_store.fetch_chat_history(channel_id.value)
+})
 </script>
 
 <template>

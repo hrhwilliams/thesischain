@@ -718,22 +718,20 @@ impl AppState {
         user: &User,
         channel_id: Uuid,
         device_id: Uuid,
+        after: Option<Uuid>,
     ) -> Result<Vec<OutboundChatMessage>, AppError> {
         let mut conn = self
             .pool
             .get()
             .map_err(|e| AppError::PoolError(e.to_string()))?;
 
-        let history = message::table
+        let mut query = message::table
             .inner_join(
                 message_payload::table.on(message::id
                     .eq(message_payload::message_id)
                     .and(message_payload::recipient_device_id.eq(device_id))),
             )
-            .inner_join(user::table.on(message::sender_id.eq(user::id)))
-            .inner_join(device::table.on(message_payload::recipient_device_id.eq(device::id)))
             .filter(message::channel_id.eq(channel_id))
-            .filter(device::user_id.eq(user.id))
             .select((
                 message::id,
                 message::sender_device_id,
@@ -744,8 +742,13 @@ impl AppState {
                 message_payload::is_pre_key,
             ))
             .order(message::id.asc())
-            .load::<OutboundChatMessage>(&mut conn)?;
+            .into_boxed();
 
+        if let Some(after) = after {
+            query = query.filter(message::id.gt(after))
+        }
+
+        let history = query.load::<OutboundChatMessage>(&mut conn)?;
         Ok(history)
     }
 

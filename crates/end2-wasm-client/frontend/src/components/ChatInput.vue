@@ -5,7 +5,8 @@ import { v7 } from 'uuid';
 import { useWebSocketStore } from '../stores/socket';
 import { useDeviceStore } from '../stores/device';
 import { useChannelStore } from '../stores/channel';
-import type { EncryptedMessage } from '../types/message';
+import type { DecryptedMessage, EncryptedMessage } from '../types/message';
+import { useUserStore } from '../stores/user';
 
 const props = defineProps({
     channel_id: { type: String, required: true }
@@ -15,6 +16,7 @@ const message_input = ref('');
 const devices = computed(() => channel_store.get_devices(channel_id.value))
 
 const socket = useWebSocketStore()
+const user_store = useUserStore()
 const channel_store = useChannelStore()
 const device_store = useDeviceStore()
 
@@ -42,6 +44,16 @@ async function send_message() {
     }
 
     socket.send(message)
+
+    let decrypted: DecryptedMessage = {
+        message_id: message.message_id,
+        channel_id: channel_id.value,
+        author_id: user_store.me!.id,
+        plaintext: message_input.value.trim(),
+        timestamp: new Date()
+    }
+    await channel_store.save_message(decrypted)
+
     message_input.value = ''
 }
 

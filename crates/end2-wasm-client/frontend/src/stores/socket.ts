@@ -39,6 +39,7 @@ export const useWebSocketStore = defineStore('socket', {
                         console.info('message', payload.data)
                         const decrypted = await device_store.decrypt(payload.data)
                         if (decrypted.ok) {
+                            await channel_store.save_message(decrypted.value)
                             console.log(decrypted.value.plaintext)
                         }
                         break;

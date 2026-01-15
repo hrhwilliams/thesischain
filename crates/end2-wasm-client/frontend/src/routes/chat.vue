@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import { useRoute } from 'vue-router'
 import type { ApiError } from '../api';
 import ChatHistory from '../components/ChatHistory.vue';
