@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use vodozemac::{Curve25519PublicKey, olm::{Account, Session}};
+use vodozemac::{
+    Curve25519PublicKey,
+    olm::{Account, Session},
+};
 
 #[derive(Serialize)]
 pub struct IdentityKeys {

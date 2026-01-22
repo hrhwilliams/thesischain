@@ -50,9 +50,7 @@ impl ApiClient {
 
         let device = if device.is_some() {
             // SAFETY: checked in if statement above
-            unsafe {
-                device.unwrap_unchecked()
-            }
+            unsafe { device.unwrap_unchecked() }
         } else {
             let device_info = client
                 .post("http://localhost:8081/api/me/device")
@@ -62,9 +60,9 @@ impl ApiClient {
                 .error_for_status()?
                 .json::<DeviceInfo>()
                 .await?;
-    
+
             let device = Device::new(&device_info.device_id);
-    
+
             let _ = client
                 .post(&format!(
                     "http://localhost:8081/api/me/device/{}",
@@ -123,47 +121,52 @@ impl ApiClient {
     }
 
     async fn channels(&self) -> Result<Vec<ChannelId>> {
-        let response = self.get("/me/channels")
-        .send()
-        .await?
-        .json::<Vec<ChannelId>>()
-        .await?;
+        let response = self
+            .get("/me/channels")
+            .send()
+            .await?
+            .json::<Vec<ChannelId>>()
+            .await?;
 
         Ok(response)
     }
 
     async fn get_channel_participants(&self, channel: &ChannelId) -> Result<ChannelInfo> {
-        let response = self.get(&format!("/channel/{}", channel.channel_id))
-        .send()
-        .await?
-        .json::<ChannelInfo>()
-        .await?;
+        let response = self
+            .get(&format!("/channel/{}", channel.channel_id))
+            .send()
+            .await?
+            .json::<ChannelInfo>()
+            .await?;
 
         Ok(response)
     }
 
     async fn get_user_info(&self, user_id: &str) -> Result<UserInfo> {
-        let response = self.get(&format!("/user/{}", user_id))
-        .send()
-        .await?
-        .json::<UserInfo>()
-        .await?;
+        let response = self
+            .get(&format!("/user/{}", user_id))
+            .send()
+            .await?
+            .json::<UserInfo>()
+            .await?;
 
         Ok(response)
     }
 
     async fn get_user_devices(&self, user_id: &str) -> Result<Vec<DeviceInfo>> {
-        let response = self.get(&format!("/user/{}/devices", user_id))
-        .send()
-        .await?
-        .json::<Vec<DeviceInfo>>()
-        .await?;
+        let response = self
+            .get(&format!("/user/{}/devices", user_id))
+            .send()
+            .await?
+            .json::<Vec<DeviceInfo>>()
+            .await?;
 
         Ok(response)
     }
 
     async fn get_device_info(&self, user_id: &str, device_id: &str) -> Result<DeviceInfo> {
-        let response = self.get(&format!("/user/{}/device/{}", user_id, device_id))
+        let response = self
+            .get(&format!("/user/{}/device/{}", user_id, device_id))
             .send()
             .await?;
 
@@ -174,16 +177,17 @@ impl ApiClient {
 
         match response.json::<DeviceInfo>().await {
             Ok(info) => return Ok(info),
-            Err(e) => panic!("{:?}", e)
+            Err(e) => panic!("{:?}", e),
         }
     }
 
     async fn get_device_otk(&self, user_id: &str, device_id: &str) -> Result<Otk> {
-        let response = self.post(&format!("/user/{}/device/{}/otk", user_id, device_id))
-        .send()
-        .await?
-        .json::<Otk>()
-        .await?;
+        let response = self
+            .post(&format!("/user/{}/device/{}/otk", user_id, device_id))
+            .send()
+            .await?
+            .json::<Otk>()
+            .await?;
 
         Ok(response)
     }
@@ -221,7 +225,9 @@ async fn main() -> Result<()> {
             devices.push(client1.get_device_info(&user.id, &device.device_id).await?);
 
             if device.device_id != client1.device.id() {
-                let otk = client1.get_device_otk(&participant.id, &device.device_id).await?;
+                let otk = client1
+                    .get_device_otk(&participant.id, &device.device_id)
+                    .await?;
                 println!("{}", otk.id);
 
                 // now can actually encrypt
