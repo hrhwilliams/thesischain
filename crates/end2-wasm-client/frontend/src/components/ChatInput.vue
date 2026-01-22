@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, toRef } from 'vue';
-import { db } from '../db';
 import { v7 } from 'uuid';
 import { useWebSocketStore } from '../stores/socket';
 import { useDeviceStore } from '../stores/device';

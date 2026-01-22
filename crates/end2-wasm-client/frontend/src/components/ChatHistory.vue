@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, toRef } from 'vue'
+import { nextTick, toRef, ref, watch, computed } from 'vue'
 import { from, useObservable } from '@vueuse/rxjs'
 import { liveQuery, Dexie } from 'dexie'
 import { db } from '../db'
 import { useUserStore } from '../stores/user'
 import { useChannelStore } from '../stores/channel'
+import { useQuery } from '@tanstack/vue-query'
 
 const props = defineProps({
     channel_id: { type: String, required: true }
@@ -13,6 +14,7 @@ const props = defineProps({
 const channel_id = toRef(props, 'channel_id')
 const user_store = useUserStore()
 const channel_store = useChannelStore()
+const history = ref<HTMLDivElement | null>(null)
 
 const messages = useObservable(from(
     liveQuery(async () => {
@@ -28,15 +30,40 @@ const messages = useObservable(from(
     }))
 )
 
-onMounted(async () => {
-    await channel_store.fetch_chat_history(channel_id.value)
+watch(messages, async (new_msgs, old_msgs) => {
+    const el = history.value
+    if (!el || !new_msgs) {
+        return
+    }
+
+    const is_at_bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 50
+    const is_first_load = !old_msgs || old_msgs.length === 0
+
+    await nextTick()
+
+    if (is_first_load || is_at_bottom) {
+        el.scrollTop = el.scrollHeight
+    }
+})
+
+const { } = useQuery({
+    queryKey: ['devices'],
+    enabled: computed(() => user_store.logged_in),
+    queryFn: async () => {
+        await channel_store.fetch_chat_history(channel_id.value)
+    },
 })
 </script>
 
 <template>
-    <div class="message-history">
+    <div ref="history" class="message-history">
         <div v-for="message in messages" :key="message.message_id" class="message">
-            <span class="author">{{ user_store.get_display_name(message.author_id) }}</span> <span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+            <div v-if="user_store.has_nickname(message.author_id)">
+                <span class="author">{{ user_store.get_display_name(message.author_id) }} ({{ user_store.get_username(message.author_id) }})</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+            </div>
+            <div v-else>
+                <span class="author">{{ user_store.get_username(message.author_id) }}</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+            </div>
             <div class="content">{{ message.plaintext }}</div>
         </div>
     </div>
@@ -55,11 +82,11 @@ onMounted(async () => {
     text-indent: -1em;
 }
 
-.message-history > .message > .author {
+.message-history > .message > div > .author {
     font-weight: bold;
     font-size: larger;
 }
-.message-history > .message > .date {
+.message-history > .message > div > .date {
     color: #222;
     font-size: smaller;
 }

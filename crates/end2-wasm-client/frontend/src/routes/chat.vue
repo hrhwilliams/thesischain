@@ -28,7 +28,7 @@ const channel_id = route.params.chat_id as string;
 .chat-container {
     display: flex;
     flex-direction: column;
-    width: 550px;
+    max-width: 600px;
     height: 720px;
     border: 1px solid #ccc;
     border-radius: 4px;

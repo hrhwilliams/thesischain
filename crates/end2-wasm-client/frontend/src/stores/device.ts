@@ -124,10 +124,7 @@ export const useDeviceStore = defineStore('device', () => {
             })
         }
 
-
-
         const response =  await request<DeviceOneTimeKeys>(`/me/device/${device_id()}/otks`, 'GET')
-        console.log(response)
 
         if (!response.ok) {
             return Err(response.error)

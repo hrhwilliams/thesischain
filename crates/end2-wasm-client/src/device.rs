@@ -249,11 +249,7 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
-    pub fn decrypt_otk(
-        &mut self,
-        device: JsValue,
-        payload: JsValue,
-    ) -> Result<JsValue, JsError> {
+    pub fn decrypt_otk(&mut self, device: JsValue, payload: JsValue) -> Result<JsValue, JsError> {
         let device: DeviceInfo = serde_wasm_bindgen::from_value(device)?;
         let payload: InboundChatMessage = serde_wasm_bindgen::from_value(payload)?;
 

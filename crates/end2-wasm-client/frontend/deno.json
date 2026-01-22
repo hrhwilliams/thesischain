@@ -1,0 +1,13 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "@tanstack/vue-query": "npm:@tanstack/vue-query@^5.92.6",
+    "@vueuse/rxjs": "npm:@vueuse/rxjs@^14.1.0",
+    "pinia": "npm:pinia@^3.0.4",
+    "typescript": "npm:typescript@^5.9.3",
+    "uuid": "npm:uuid@^13.0.0",
+    "vite-plugin-wasm": "npm:vite-plugin-wasm@^3.5.0",
+    "vue": "npm:vue@^3.5.26",
+    "vue-router": "npm:vue-router@^4.6.4"
+  }
+}

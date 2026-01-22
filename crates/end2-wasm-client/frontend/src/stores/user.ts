@@ -47,6 +47,28 @@ export const useUserStore = defineStore('user', () => {
         }
     }
 
+    function has_nickname(user_id: string) {
+        const user = users.value[user_id]
+
+        if (user) {
+            return user.nickname !== null
+        } else {
+            fetch_user_info(user_id)
+            return false
+        }
+    }
+
+    function get_username(user_id: string) {
+        const user = users.value[user_id]
+
+        if (user) {
+            return user.username
+        } else {
+            fetch_user_info(user_id)
+            return '...'
+        }
+    }
+
     function get_display_name(user_id: string) {
         const user = users.value[user_id]
 
@@ -84,6 +106,8 @@ export const useUserStore = defineStore('user', () => {
         logged_in,
         login,
         logout,
+        has_nickname,
+        get_username,
         get_display_name,
         change_nickname,
     }

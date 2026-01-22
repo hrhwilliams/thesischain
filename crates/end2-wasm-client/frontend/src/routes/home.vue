@@ -1,17 +1,3 @@
-<script setup lang="js">
-import enUsPatterns from 'hyphenation.en-us'
-import { createHyphenator, justifyContent } from 'tex-linebreak'
-import { onMounted } from 'vue'
-
-const hyphenate = createHyphenator(enUsPatterns)
-
-// onMounted(async () => {
-//     await document.fonts.ready
-//     const paragraphs = Array.from(document.querySelectorAll('p'))
-//     justifyContent(paragraphs, hyphenate)
-// })
-</script>
-
 <template>
     <article>
     <h2>About</h2>

@@ -9,12 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tanstack/vue-query": "^5.92.5",
+    "@tanstack/vue-query": "^5.92.6",
     "@vueuse/rxjs": "^14.1.0",
     "dexie": "^4.2.1",
-    "hyphenation.en-us": "^0.2.1",
     "pinia": "^3.0.4",
-    "tex-linebreak": "^0.8.1",
     "typescript": "^5.9.3",
     "uuid": "^13.0.0",
     "vite-plugin-wasm": "^3.5.0",
@@ -26,6 +24,6 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/tsconfig": "^0.8.1",
     "vite": "^7.2.4",
-    "vue-tsc": "^3.1.4"
+    "vue-tsc": "^3.2.2"
   }
 }

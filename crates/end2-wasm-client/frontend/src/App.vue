@@ -75,7 +75,7 @@ watch(
                     <p v-else>
                         <RouterLink to="/">Home</RouterLink>
                         | <RouterLink to="/login">Log In</RouterLink>
-                        | <a href="http://localhost:8081/api/auth/discord">Log in with Discord</a>
+                        | <a href="https://chat.fiatlux.dev/api/auth/discord">Log in with Discord</a>
                         | <RouterLink to="/register">Register</RouterLink>
                     </p>
                 </div>

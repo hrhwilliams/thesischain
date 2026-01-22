@@ -6,16 +6,14 @@ import wasm from 'vite-plugin-wasm';
 export default defineConfig({
     plugins: [vue(), wasm()],
     server: {
-        port: 8080,
-        proxy: {
-            '/api': {
-                target: 'http://localhost:8081',
-                changeOrigin: true
-            },
-            '/ws': {
-                target: 'ws://localhost:8081',
-                ws: true
-            }
+        host: '0.0.0.0',
+        port: 8081,
+        allowedHosts: ['chat.fiatlux.dev'],
+        strictPort: true,
+        hmr: {
+            host: 'chat.fiatlux.dev',
+            clientPort: 443,
+            protocol: 'wss'
         }
     }
 })
