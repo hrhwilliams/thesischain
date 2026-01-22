@@ -14,15 +14,17 @@ async fn main() -> Result<(), std::io::Error> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let port = std::env::var("PORT")
-        .expect("PORT must be set")
+    let port = std::env::var("BACKEND_PORT")
+        .expect("BACKEND_PORT must be set")
         .parse()
-        .expect("PORT must be in range 0-65535");
+        .expect("BACKEND_PORT must be in range 0-65535");
 
-    let client_id = std::env::var("DISCORD_CLIENT_ID").expect("DISCORD_CLIENT_ID must be set");
+    let client_id =
+        std::env::var("DISCORD_OAUTH_CLIENT_ID").expect("DISCORD_OAUTH_CLIENT_ID must be set");
     let client_secret =
-        std::env::var("DISCORD_CLIENT_SECRET").expect("DISCORD_CLIENT_SECRET must be set");
-    let redirect = std::env::var("DISCORD_REDIRECT").expect("DISCORD_REDIRECT must be set");
+        std::env::var("DISCORD_OAUTH_SECRET").expect("DISCORD_OAUTH_SECRET must be set");
+    let redirect =
+        std::env::var("DISCORD_OAUTH_REDIRECT").expect("DISCORD_OAUTH_REDIRECT must be set");
 
     let oauth = OAuthHandler::new(client_id, client_secret, redirect);
 
@@ -34,7 +36,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let app = App::new(oauth, pool);
 
-    let listener = TcpListener::bind(("127.0.0.1", port))
+    let listener = TcpListener::bind(("0.0.0.0", port))
         .await
         .expect("TcpListener");
 
