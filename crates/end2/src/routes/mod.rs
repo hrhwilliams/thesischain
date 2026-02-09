@@ -5,8 +5,6 @@ use crate::AppState;
 mod auth;
 mod channel;
 mod device;
-// mod channel;
-// mod key;
 mod me;
 mod user;
 mod ws;
@@ -30,6 +28,7 @@ impl Api {
                 "/channel/{channel_id}/history",
                 get(channel::get_channel_history),
             )
+            .route("/channel/{channel_id}/msg", post(channel::send_message))
             .route("/me", get(me::me))
             .route("/me/nickname", post(me::change_nickname))
             .route("/me/channels", get(channel::get_all_channels))

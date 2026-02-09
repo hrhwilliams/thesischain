@@ -26,19 +26,19 @@ impl User {
             let session = app_state
                 .get_session(session_id)
                 .await
-                .map_err(|e| ExtractError::LookupError(e))?
+                .map_err(ExtractError::LookupError)?
                 .ok_or(ExtractError::NoSession)?;
 
             let user_id = app_state
                 .get_from_session::<Uuid>(&session, "user_id")
                 .await
-                .map_err(|e| ExtractError::LookupError(e))?
+                .map_err(ExtractError::LookupError)?
                 .ok_or(ExtractError::NoUser)?;
 
             let user = app_state
                 .get_user_info(user_id)
                 .await
-                .map_err(|e| ExtractError::LookupError(e))?
+                .map_err(ExtractError::LookupError)?
                 .ok_or(ExtractError::NoSession)?;
 
             Ok(user)

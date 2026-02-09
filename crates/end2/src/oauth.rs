@@ -96,8 +96,8 @@ impl OAuthHandler {
             access_token: token_response.access_token().secret().to_string(),
             refresh_token: token_response
                 .refresh_token()
-                .and_then(|t| Some(t.secret().to_string())),
-            expires: token_response.expires_in().and_then(|t| Some(t.as_secs())),
+                .map(|t| t.secret().to_string()),
+            expires: token_response.expires_in().map(|t| t.as_secs()),
         };
 
         Ok(discord_token)

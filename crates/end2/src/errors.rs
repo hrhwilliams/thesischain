@@ -192,8 +192,6 @@ impl From<DecodeError> for AppError {
     }
 }
 
-pub enum InputError {}
-
 #[derive(Debug)]
 pub enum AppError {
     ArgonError(String),

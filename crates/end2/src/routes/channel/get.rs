@@ -3,7 +3,6 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{ApiError, AppState, User};

@@ -14,6 +14,8 @@ async fn main() -> Result<(), std::io::Error> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
+    let ip = std::env::var("BACKEND_IP").expect("BACKEND_IP must be set");
+
     let port = std::env::var("BACKEND_PORT")
         .expect("BACKEND_PORT must be set")
         .parse()
@@ -36,9 +38,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let app = App::new(oauth, pool);
 
-    let listener = TcpListener::bind(("0.0.0.0", port))
-        .await
-        .expect("TcpListener");
+    let listener = TcpListener::bind((ip, port)).await.expect("TcpListener");
 
     app.run(listener).await
 }

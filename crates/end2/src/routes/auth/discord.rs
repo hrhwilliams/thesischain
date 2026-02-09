@@ -2,7 +2,7 @@ use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{ApiError, AppError, AppState, User, WebSession};
 
@@ -14,7 +14,7 @@ pub async fn get_discord_oauth_url(
     let (discord_url, csrf_token, pkce_verifier) = app_state
         .oauth
         .generate_oauth_url()
-        .map_err(|e| AppError::from(e))?;
+        .map_err(AppError::from)?;
     let web_session = app_state
         .insert_into_session(
             web_session,
@@ -58,12 +58,12 @@ pub async fn discord_redirect(
         .oauth
         .get_token(code, state, csrf_token, pkce_verifier)
         .await
-        .map_err(|e| AppError::from(e))?;
+        .map_err(AppError::from)?;
     let discord_info = app_state
         .oauth
         .get_discord_info(&token)
         .await
-        .map_err(|e| AppError::from(e))?;
+        .map_err(AppError::from)?;
 
     if let Some(user) = user {
         tracing::info!("linking account");

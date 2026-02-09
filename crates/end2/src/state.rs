@@ -63,6 +63,7 @@ impl AppState {
         let sender = user_websockets
             .entry(user.id)
             .or_insert_with(|| broadcast::Sender::new(128));
+
         sender.clone()
     }
 
@@ -290,7 +291,7 @@ impl AppState {
         let user = self
             .get_user_by_username(username)
             .await
-            .map_err(|e| LoginError::InternalError(e))?
+            .map_err(LoginError::InternalError)?
             .ok_or(LoginError::NoSuchUser)?;
 
         let user_password = user.password.as_ref().ok_or(LoginError::NoPassword)?;
@@ -321,7 +322,7 @@ impl AppState {
             .map_err(|e: ParseIntError| LoginError::InvalidDiscordId(e.to_string()))?;
         self.get_user_by_discord_id(discord_id)
             .await
-            .map_err(|e| LoginError::InternalError(e))?
+            .map_err(LoginError::InternalError)?
             .ok_or(LoginError::NoSuchUser)
     }
 
@@ -448,7 +449,7 @@ impl AppState {
             .filter(device::user_id.eq(user.id))
             .select(Device::as_select())
             .load(&mut conn)
-            .map_err(|e| AppError::from(e))
+            .map_err(AppError::from)
     }
 
     pub async fn set_device_keys(
@@ -835,7 +836,7 @@ impl AppState {
         let payloads = message
             .payloads
             .into_iter()
-            .map(|m| m.to_new_message(message.message_id))
+            .map(|m| m.into_new_message(message.message_id))
             .collect::<Result<Vec<NewMessagePayload>, _>>()?;
 
         let message = diesel::insert_into(message::table)

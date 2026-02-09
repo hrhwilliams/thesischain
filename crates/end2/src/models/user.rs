@@ -21,10 +21,6 @@ impl PartialEq for User {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.id != other.id
-    }
 }
 
 #[derive(Debug, Deserialize, Insertable)]

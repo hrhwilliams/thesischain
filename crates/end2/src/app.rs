@@ -16,7 +16,6 @@ use crate::session::create_session;
 /// flow
 /// - client registers username and x25519/ed25519 key bundle
 /// - client can do challenge-response to get a session token
-
 /// # API map
 ///
 /// |verb|endpoint|description|
@@ -37,25 +36,9 @@ pub struct App {
 }
 
 impl App {
+    #[must_use]
     pub fn new(oauth: OAuthHandler, pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         let app_state = AppState::new(oauth, pool);
-        // let router = axum::Router::new()
-        //     .route("/", get(web_endpoints::index))
-        //     .route(
-        //         "/login",
-        //         get(web_endpoints::display_login_form).post(web_endpoints::login),
-        //     )
-        //     .route("/logout", get(web_endpoints::logout))
-        //     .route(
-        //         "/register",
-        //         get(web_endpoints::register_form).post(web_endpoints::register),
-        //     )
-        //     .route("/dms", get(web_endpoints::direct_messages))
-        //     .route("/dm", post(web_endpoints::create_room))
-        //     .route("/dm/{room_id}", get(web_endpoints::direct_message))
-        //     .route("/dm/ws/{room_id}", any(web_endpoints::direct_message_ws))
-        //     .layer(TraceLayer::new_for_http())
-        //     .with_state(state);
 
         let router = axum::Router::new()
             .nest("/api", Api::new())
@@ -79,6 +62,8 @@ impl App {
         Self { router }
     }
 
+    /// # Errors
+    /// Returns `std::io::Error` if the server fails to start.
     pub async fn run(self, listener: TcpListener) -> Result<(), std::io::Error> {
         axum::serve(listener, self.router).await
     }

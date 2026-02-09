@@ -1,7 +1,12 @@
-use axum::{Json, extract::State, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Path, State},
+    response::IntoResponse,
+};
 use serde::Deserialize;
+use uuid::Uuid;
 
-use crate::{ApiError, AppError, AppState, User, WsEvent};
+use crate::{ApiError, AppError, AppState, InboundChatMessage, User, WsEvent};
 
 #[derive(Deserialize)]
 pub struct ChannelWith {
@@ -31,12 +36,13 @@ pub async fn create_channel_with(
     Ok(Json(response))
 }
 
-// #[tracing::instrument(skip(app_state))]
-// pub async fn send_message(
-//     State(app_state): State<AppState>,
-//     user: User,
-//     Path(channel_id): Path<Uuid>,
-//     Json(message): Json<InboundChatMessage>,
-// ) -> Result<impl IntoResponse, ApiError> {
-//     todo!()
-// }
+#[tracing::instrument(skip(app_state))]
+pub async fn send_message(
+    State(app_state): State<AppState>,
+    user: User,
+    Path(channel_id): Path<Uuid>,
+    Json(message): Json<InboundChatMessage>,
+) -> Result<impl IntoResponse, ApiError> {
+    app_state.save_message(&user, message).await?;
+    Ok(())
+}

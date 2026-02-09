@@ -37,7 +37,7 @@ impl NewChatMessage {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct InboundChatMessage {
     pub message_id: Uuid,
     pub device_id: Uuid,

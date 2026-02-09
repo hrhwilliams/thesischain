@@ -18,6 +18,7 @@ where
     }
 }
 
+#[must_use]
 pub fn is_valid_username(name: &str) -> bool {
     if name.len() < 3 || name.len() > 20 {
         return false;
@@ -27,6 +28,7 @@ pub fn is_valid_username(name: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
 }
 
+#[must_use]
 pub fn is_valid_nickname(name: &str) -> bool {
     if name.trim().len() < 3 || name.len() > 20 {
         return false;

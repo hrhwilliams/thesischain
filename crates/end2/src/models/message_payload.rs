@@ -25,7 +25,7 @@ pub struct NewMessagePayload {
     pub is_pre_key: bool,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct InboundMessagePayload {
     pub recipient_device_id: Uuid,
     pub ciphertext: String,
@@ -33,7 +33,7 @@ pub struct InboundMessagePayload {
 }
 
 impl InboundMessagePayload {
-    pub fn to_new_message(self, message_id: Uuid) -> Result<NewMessagePayload, AppError> {
+    pub fn into_new_message(self, message_id: Uuid) -> Result<NewMessagePayload, AppError> {
         Ok(NewMessagePayload {
             message_id,
             recipient_device_id: self.recipient_device_id,
