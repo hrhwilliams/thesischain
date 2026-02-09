@@ -1,63 +1,34 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, toRef } from 'vue';
-import { v7 } from 'uuid';
-import { useWebSocketStore } from '../stores/socket';
-import { useDeviceStore } from '../stores/device';
+import { onMounted, ref, toRef } from 'vue';
 import { useChannelStore } from '../stores/channel';
-import type { DecryptedMessage, EncryptedMessage } from '../types/message';
-import { useUserStore } from '../stores/user';
+import { useMessageStore } from '../stores/message';
 
 const props = defineProps({
     channel_id: { type: String, required: true }
 })
 const channel_id = toRef(props, 'channel_id')
 const message_input = ref('');
-const devices = computed(() => channel_store.get_devices(channel_id.value))
 
-const socket = useWebSocketStore()
-const user_store = useUserStore()
-const channel_store = useChannelStore()
-const device_store = useDeviceStore()
+const channelStore = useChannelStore()
+const messageStore = useMessageStore()
 
 async function send_message() {
-    if (message_input.value.trim().length === 0) {
+    const text = message_input.value.trim()
+    if (text.length === 0) {
         return
     }
 
-    let message: EncryptedMessage = {
-        message_id: v7(),
-        device_id: device_store.device_id()!,
-        channel_id: channel_id.value,
-        payloads: [],
+    const result = await messageStore.sendMessage(channel_id.value, text)
+    if (!result.ok) {
+        console.error('failed to send message:', result.error)
+        return
     }
-
-    for (const device of devices.value) {
-        if (device.device_id !== device_store.device_id()) {
-            const payload = await device_store.encrypt(channel_id.value, device, message_input.value.trim())
-            if (payload.ok) {
-                message.payloads.push(payload.value)
-            } else {
-                console.error(payload.error)
-            }
-        }
-    }
-
-    socket.send(message)
-
-    let decrypted: DecryptedMessage = {
-        message_id: message.message_id,
-        channel_id: channel_id.value,
-        author_id: user_store.me!.id,
-        plaintext: message_input.value.trim(),
-        timestamp: new Date()
-    }
-    await channel_store.save_message(decrypted)
 
     message_input.value = ''
 }
 
 onMounted(() => {
-    channel_store.fetch_channel(channel_id.value)
+    channelStore.fetchChannel(channel_id.value)
 })
 </script>
 

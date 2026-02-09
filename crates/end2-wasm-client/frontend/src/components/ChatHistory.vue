@@ -4,7 +4,7 @@ import { from, useObservable } from '@vueuse/rxjs'
 import { liveQuery, Dexie } from 'dexie'
 import { db } from '../db'
 import { useUserStore } from '../stores/user'
-import { useChannelStore } from '../stores/channel'
+import { useMessageStore } from '../stores/message'
 import { useQuery } from '@tanstack/vue-query'
 
 const props = defineProps({
@@ -12,8 +12,8 @@ const props = defineProps({
 })
 
 const channel_id = toRef(props, 'channel_id')
-const user_store = useUserStore()
-const channel_store = useChannelStore()
+const userStore = useUserStore()
+const messageStore = useMessageStore()
 const history = ref<HTMLDivElement | null>(null)
 
 const messages = useObservable(from(
@@ -23,7 +23,7 @@ const messages = useObservable(from(
         return await db.messages
             .where('[channel_id+timestamp]')
             .between(
-                [channel_id.value, Dexie.minKey], 
+                [channel_id.value, Dexie.minKey],
                 [channel_id.value, Dexie.maxKey]
             )
             .toArray()
@@ -46,11 +46,11 @@ watch(messages, async (new_msgs, old_msgs) => {
     }
 })
 
-const { } = useQuery({
-    queryKey: ['devices'],
-    enabled: computed(() => user_store.logged_in),
+useQuery({
+    queryKey: ['chat-history', channel_id.value],
+    enabled: computed(() => userStore.logged_in),
     queryFn: async () => {
-        await channel_store.fetch_chat_history(channel_id.value)
+        await messageStore.fetchHistory(channel_id.value)
     },
 })
 </script>
@@ -58,11 +58,11 @@ const { } = useQuery({
 <template>
     <div ref="history" class="message-history">
         <div v-for="message in messages" :key="message.message_id" class="message">
-            <div v-if="user_store.has_nickname(message.author_id)">
-                <span class="author">{{ user_store.get_display_name(message.author_id) }} ({{ user_store.get_username(message.author_id) }})</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+            <div v-if="userStore.has_nickname(message.author_id)">
+                <span class="author">{{ userStore.get_display_name(message.author_id) }} ({{ userStore.get_username(message.author_id) }})</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
             </div>
             <div v-else>
-                <span class="author">{{ user_store.get_username(message.author_id) }}</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+                <span class="author">{{ userStore.get_username(message.author_id) }}</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
             </div>
             <div class="content">{{ message.plaintext }}</div>
         </div>

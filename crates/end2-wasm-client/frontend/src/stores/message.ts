@@ -1,0 +1,144 @@
+import { defineStore } from 'pinia'
+import { v7 } from 'uuid'
+import Dexie from 'dexie'
+import { db } from '../db'
+import { Err, Ok, request, type ApiResult } from '../api'
+import { useUserStore } from './user'
+import { useDeviceStore } from './device'
+import { useChannelStore } from './channel'
+import { useWebSocketStore } from './socket'
+import { getDeviceId, encryptMessage, decryptMessage } from '../services/crypto'
+import type { DecryptedMessage, EncryptedMessage, InboundChatMessage } from '../types/message'
+
+export const useMessageStore = defineStore('message', () => {
+    const userStore = useUserStore()
+
+    async function persistMessage(msg: DecryptedMessage): Promise<void> {
+        const timestamp = msg.timestamp instanceof Date
+            ? msg.timestamp
+            : new Date(msg.timestamp)
+
+        await db.messages.put({ ...msg, timestamp })
+    }
+
+    async function handleInbound(message: InboundChatMessage): Promise<void> {
+        const deviceStore = useDeviceStore()
+
+        const device = await deviceStore.fetchDevice(message.author_id, message.device_id)
+        if (!device.ok) {
+            console.error('failed to fetch device for message:', message.message_id, device.error)
+            return
+        }
+
+        if (!userStore.me) {
+            console.error('failed to decrypt message: not logged in')
+            return
+        }
+
+        const decrypted = await decryptMessage(device.value, message, userStore.me.id)
+        if (!decrypted.ok) {
+            console.error('failed to decrypt message:', message.message_id, decrypted.error)
+            return
+        }
+
+        await persistMessage(decrypted.value)
+    }
+
+    async function sendMessage(channelId: string, plaintext: string): Promise<ApiResult<void>> {
+        const channelStore = useChannelStore()
+        const socket = useWebSocketStore()
+
+        if (!userStore.me) {
+            return Err({ status: 0, message: 'not logged in' })
+        }
+
+        const deviceId = getDeviceId()
+        if (!deviceId) {
+            return Err({ status: 0, message: 'no device context' })
+        }
+
+        const devices = channelStore.getDevices(channelId)
+        const message: EncryptedMessage = {
+            message_id: v7(),
+            device_id: deviceId,
+            channel_id: channelId,
+            payloads: [],
+        }
+
+        for (const device of devices) {
+            if (device.device_id !== deviceId) {
+                const payload = await encryptMessage(channelId, device, plaintext, userStore.me.id)
+                if (payload.ok) {
+                    message.payloads.push(payload.value)
+                } else {
+                    console.error('failed to encrypt for device:', device.device_id, payload.error)
+                }
+            }
+        }
+
+        socket.send(message)
+
+        await persistMessage({
+            message_id: message.message_id,
+            channel_id: channelId,
+            author_id: userStore.me.id,
+            plaintext,
+            timestamp: new Date(),
+        })
+
+        return Ok(undefined as void)
+    }
+
+    async function fetchHistory(channelId: string): Promise<void> {
+        const deviceStore = useDeviceStore()
+
+        const deviceId = getDeviceId()
+        if (!deviceId) {
+            return
+        }
+
+        if (!userStore.me) {
+            return
+        }
+
+        const lastMessage = await db.messages
+            .where('[channel_id+timestamp]')
+            .between(
+                [channelId, Dexie.minKey],
+                [channelId, Dexie.maxKey]
+            )
+            .last()
+
+        const params = new URLSearchParams({ device: deviceId })
+        if (lastMessage) {
+            params.append('after', lastMessage.message_id)
+        }
+
+        const response = await request<InboundChatMessage[]>(`/channel/${channelId}/history?${params}`, 'GET')
+        if (!response.ok) {
+            console.error('failed to fetch chat history:', response.error)
+            return
+        }
+
+        for (const msg of response.value) {
+            const device = await deviceStore.fetchDevice(msg.author_id, msg.device_id)
+            if (!device.ok) {
+                console.error('failed to fetch device for history message:', msg.message_id, device.error)
+                continue
+            }
+
+            const decrypted = await decryptMessage(device.value, msg, userStore.me.id)
+            if (decrypted.ok) {
+                await persistMessage(decrypted.value)
+            } else {
+                console.error('failed to decrypt history message:', msg.message_id, decrypted.error)
+            }
+        }
+    }
+
+    return {
+        handleInbound,
+        sendMessage,
+        fetchHistory,
+    }
+})

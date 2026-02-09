@@ -20,29 +20,6 @@ export const Err = (error: ApiError): ApiResult<never> => ({
     error
 })
 
-export type NewNickname = {
-   user_id: string,
-   nickname: string
-}
-
-export type ChannelResponse = {
-    channel_id: string,
-    user_id: string,
-    user_name: string,
-}
-
-export type DeviceOtk = {
-    id: string,
-    device_id: string,
-    otk: string
-}
-
-export type MessageReceivedReply = {
-    message_id: string,
-    channel_id: string,
-    timestamp: string,
-}
-
 export async function request<T>(endpoint: string, method: string, body: any = null): Promise<ApiResult<T>> {
     const options: RequestInit = {
         method,
@@ -63,8 +40,4 @@ export async function request<T>(endpoint: string, method: string, body: any = n
     const text = await response.text()
     const json = text ? JSON.parse(text) : {}
     return Ok(json)
-}
-
-export function get_otk(user_id: string, device_id: string): Promise<ApiResult<DeviceOtk>> {
-    return request<DeviceOtk>(`/user/${user_id}/device/${device_id}/otk`, 'GET')
 }

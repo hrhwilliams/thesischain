@@ -5,26 +5,25 @@ import { useRoute } from 'vue-router'
 import { useUserStore } from './stores/user'
 import { request, type ApiError } from './api'
 import type { UserInfo } from './types/user'
-import { useDeviceStore } from './stores/device'
 import { useWebSocketStore } from './stores/socket'
+import { initDevice, ensureOtks, getDeviceId } from './services/crypto'
 import ErrorMessage from './components/ErrorMessage.vue'
 
 const route = useRoute()
 let pageTitle = computed(() => route.meta.title || 'End2')
 
-const user_store = useUserStore()
-const device_store = useDeviceStore()
+const userStore = useUserStore()
 const socket = useWebSocketStore()
 
 const error = ref<ApiError | null>(null)
 
-const { } = useQuery({
+useQuery({
     queryKey: ['me'],
     queryFn: async () => {
         const response = await request<UserInfo>('/me', 'GET')
 
         if (response.ok) {
-            user_store.login(response.value)
+            userStore.login(response.value)
             error.value = null
             return response.value
         } else {
@@ -38,20 +37,25 @@ const { } = useQuery({
 })
 
 watch(
-    () => user_store.me,
+    () => userStore.me,
     async (me) => {
         if (me) {
-            const response = await device_store.init(me)
+            const response = await initDevice(me)
             if (!response.ok) {
                 error.value = response.error
+                return
             }
 
-            const response2 = await device_store.otks()
+            const response2 = await ensureOtks(me.id)
             if (!response2.ok) {
                 error.value = response2.error
+                return
             }
 
-            socket.connect(device_store.device_id()!)
+            const deviceId = getDeviceId()
+            if (deviceId) {
+                socket.connect(deviceId)
+            }
         } else {
             socket.disconnect()
         }
@@ -65,9 +69,9 @@ watch(
             <h1>{{ pageTitle }}</h1>
             <nav>
                 <div>
-                    <p v-if="user_store.logged_in && user_store.me">
-                        Logged in as <span v-if="user_store.me.nickname"><strong>{{ user_store.me.nickname }}</strong> ({{ user_store.me.username }})</span>
-                        <strong v-else>{{ user_store.me!.username }}</strong>
+                    <p v-if="userStore.logged_in && userStore.me">
+                        Logged in as <span v-if="userStore.me.nickname"><strong>{{ userStore.me.nickname }}</strong> ({{ userStore.me.username }})</span>
+                        <strong v-else>{{ userStore.me!.username }}</strong>
                         | <RouterLink to="/">Home</RouterLink>
                         | <RouterLink to="/chats">Chats</RouterLink>
                         | <RouterLink to="/settings">Settings</RouterLink>

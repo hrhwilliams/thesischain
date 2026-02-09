@@ -4,15 +4,13 @@ import type { DeviceId, DeviceInfo } from '../types/device'
 import type { ChannelInfo } from '../types/channel'
 import type { EncryptedMessage, InboundChatMessage } from '../types/message'
 import { useChannelStore } from './channel'
-import { useDeviceStore } from './device'
+import { useMessageStore } from './message'
 
 type WsEvent =
     | { counter: number, type: 'channel_created', data: ChannelInfo }
     | { counter: number, type: 'device_added', data: DeviceInfo }
     | { counter: number, type: 'message', data: InboundChatMessage }
     | { counter: number, type: 'ping', data: null }
-    // | { type: 'message_received', data: MessageReceivedReply }
-    // | { type: 'nickname_changed', data: NewNickname }
 
 export const useWebSocketStore = defineStore('socket', () => {
     const ws = shallowRef<WebSocket | null>(null)
@@ -22,7 +20,7 @@ export const useWebSocketStore = defineStore('socket', () => {
     let reconnect_timer: number | null = null
     let should_reconnect = true
 
-    function connect(device_id: DeviceId) {
+    function connect(deviceId: DeviceId) {
         if (ws.value) {
             const state = ws.value.readyState
 
@@ -33,23 +31,23 @@ export const useWebSocketStore = defineStore('socket', () => {
             }
         }
 
-        ws.value = new WebSocket(`wss://chat.fiatlux.dev/api/me/device/${device_id}/ws`)
+        ws.value = new WebSocket(`wss://chat.fiatlux.dev/api/me/device/${deviceId}/ws`)
 
         ws.value.onopen = () => {
             retry_count = 0
         }
 
         ws.value.onclose = (event) => {
-            console.warn('socket closed: ', event.reason)
+            console.warn('socket closed:', event.reason)
 
             if (should_reconnect) {
-                reconnect(device_id)
+                reconnect(deviceId)
             }
         }
 
         ws.value.onmessage = async (event) => {
-            const channel_store = useChannelStore()
-            const device_store = useDeviceStore()
+            const channelStore = useChannelStore()
+            const messageStore = useMessageStore()
             const payload = JSON.parse(event.data) as WsEvent
 
             if (payload.counter !== counter.value + 1) {
@@ -63,31 +61,21 @@ export const useWebSocketStore = defineStore('socket', () => {
 
             switch (payload.type) {
                 case 'channel_created':
-                    channel_store.add_channel(payload.data.channel_id, payload.data)
-                    break
-                case 'device_added':
+                    channelStore.addChannel(payload.data.channel_id, payload.data)
                     break
                 case 'message':
-                    console.info('message', payload.data)
-                    const decrypted = await device_store.decrypt(payload.data)
-                    if (decrypted.ok) {
-                        await channel_store.save_message(decrypted.value)
-                        console.log(decrypted.value.plaintext)
-                    }
+                    await messageStore.handleInbound(payload.data)
                     break
+                case 'device_added':
                 case 'ping':
                     break
-                // case 'message_received':
-                //     break
-                // case 'nickname_changed':
-                //     break
             }
 
             counter.value = payload.counter
         }
     }
 
-    function reconnect(device_id: DeviceId) {
+    function reconnect(deviceId: DeviceId) {
         if (reconnect_timer !== null) {
             return
         }
@@ -97,24 +85,20 @@ export const useWebSocketStore = defineStore('socket', () => {
         reconnect_timer = setTimeout(() => {
             reconnect_timer = null
             retry_count += 1
-            connect(device_id)
-        },
-        delay)
+            connect(deviceId)
+        }, delay)
     }
 
     function send(message: EncryptedMessage) {
-        if (ws.value) {
-            const state = ws.value.readyState
-
-            if (state === WebSocket.OPEN) {
-                const msg = JSON.stringify(message)
-                console.log('sending ', msg)
-                ws.value!.send(msg)
-            } else {
-                console.error('socket not open')
-            }
-        } else {
+        if (!ws.value) {
             console.error('socket null')
+            return
+        }
+
+        if (ws.value.readyState === WebSocket.OPEN) {
+            ws.value.send(JSON.stringify(message))
+        } else {
+            console.error('socket not open')
         }
     }
 
@@ -127,6 +111,6 @@ export const useWebSocketStore = defineStore('socket', () => {
     return {
         connect,
         send,
-        disconnect
+        disconnect,
     }
 })

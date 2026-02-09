@@ -71,7 +71,12 @@ pub struct Device {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::unused_self)]
 impl Device {
+    /// Creates a new device with the given ID.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the device ID is not a valid UUID.
     pub fn new(device_id: &str) -> Result<Self, JsError> {
         Ok(Self {
             device_id: Uuid::from_str(device_id)?,
@@ -79,10 +84,15 @@ impl Device {
         })
     }
 
+    #[must_use]
     pub fn device_id(&self) -> String {
         self.device_id.to_string()
     }
 
+    /// Serializes the device state for storage.
+    ///
+    /// # Errors
+    /// Returns `JsError` if serialization fails.
     pub fn to_pickle(&self) -> Result<JsValue, JsError> {
         let pickle = PickledDevice {
             account: self.account.pickle(),
@@ -92,11 +102,19 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&pickle)?)
     }
 
+    /// Restores a device from a previously pickled state.
+    ///
+    /// # Errors
+    /// Returns `JsError` if deserialization fails.
     pub fn try_from_pickle(state: JsValue) -> Result<Self, JsError> {
         let state = serde_wasm_bindgen::from_value::<PickledDevice>(state)?;
         Ok(Self::from(state))
     }
 
+    /// Returns the device's signed identity keys.
+    ///
+    /// # Errors
+    /// Returns `JsError` if serialization fails.
     pub fn keys(&self) -> Result<JsValue, JsError> {
         let keys = self.account.identity_keys();
         let message = [
@@ -116,12 +134,20 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&payload)?)
     }
 
+    /// Checks whether a session needs a one-time key for initial message.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the pickle is invalid.
     pub fn needs_otk(&self, pickle: JsValue) -> Result<bool, JsError> {
         let pickle = serde_wasm_bindgen::from_value::<SessionPickle>(pickle)?;
         let session = Session::from(pickle);
         Ok(!session.has_received_message())
     }
 
+    /// Generates one-time keys with signed upload payload.
+    ///
+    /// # Errors
+    /// Returns `JsError` if serialization fails.
     pub fn gen_otks(&mut self, mut count: usize) -> Result<JsValue, JsError> {
         if count > self.account.max_number_of_one_time_keys() {
             count = self.account.max_number_of_one_time_keys();
@@ -160,6 +186,10 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&payload)?)
     }
 
+    /// Encrypts a plaintext message using an existing session.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the session or encryption fails.
     pub fn encrypt(
         &self,
         pickle: JsValue,
@@ -187,6 +217,10 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
+    /// Encrypts a plaintext message using a one-time key to establish a new session.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the OTK is invalid or encryption fails.
     pub fn encrypt_otk(
         &self,
         device: JsValue,
@@ -217,8 +251,12 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
+    /// Decrypts a normal (non-pre-key) message using an existing session.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the session or decryption fails.
     pub fn decrypt(
-        &mut self,
+        &self,
         pickle: JsValue,
         device: JsValue,
         payload: JsValue,
@@ -249,6 +287,10 @@ impl Device {
         Ok(serde_wasm_bindgen::to_value(&output)?)
     }
 
+    /// Decrypts a pre-key message, establishing a new inbound session.
+    ///
+    /// # Errors
+    /// Returns `JsError` if the pre-key message is invalid or decryption fails.
     pub fn decrypt_otk(&mut self, device: JsValue, payload: JsValue) -> Result<JsValue, JsError> {
         let device: DeviceInfo = serde_wasm_bindgen::from_value(device)?;
         let payload: InboundChatMessage = serde_wasm_bindgen::from_value(payload)?;

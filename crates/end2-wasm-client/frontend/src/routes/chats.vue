@@ -5,8 +5,8 @@ import { useUserStore } from '../stores/user'
 import ErrorMessage from '../components/ErrorMessage.vue'
 import { useChannelStore } from '../stores/channel'
 
-const channel_store = useChannelStore()
-const user_store = useUserStore()
+const channelStore = useChannelStore()
+const userStore = useUserStore()
 
 const creating_channel = ref(false)
 const error = ref<ApiError | null>(null)
@@ -28,22 +28,13 @@ async function onSubmit() {
     username.value = ''
 }
 
-// const { } = useQuery({
-//     queryKey: ['channels'],
-//     enabled: computed(() => user_store.logged_in),
-//     queryFn: async () => {
-//         await channel_store.fetch_channels()
-//         return channel_store.channel_list
-//     }
-// })
-
 onMounted(() => {
-    channel_store.fetch_channels()
+    channelStore.fetchChannels()
 })
 </script>
 
 <template>
-    <div v-if="user_store.logged_in" class="dashboard">
+    <div v-if="userStore.logged_in" class="dashboard">
         <h3>Create chat</h3>
         <div class="message-user-form">
             <form @submit.prevent="onSubmit">
@@ -65,10 +56,10 @@ onMounted(() => {
 
         <div class="channel-list">
             <h3>Channels</h3>
-            <ul v-if="channel_store.channel_list.length > 0">
-                <li v-for="channel_id in channel_store.channel_list" :key="channel_id">
+            <ul v-if="channelStore.channel_list.length > 0">
+                <li v-for="channel_id in channelStore.channel_list" :key="channel_id">
                     <RouterLink :to="`/chat/${channel_id}`">
-                        {{ channel_store.get_participants(channel_id) }}
+                        {{ channelStore.getParticipantNames(channel_id) }}
                     </RouterLink>
                 </li>
             </ul>

@@ -4,19 +4,20 @@ import { useQuery } from '@tanstack/vue-query'
 import type { ApiError } from '../api'
 import { useUserStore } from '../stores/user'
 import { useDeviceStore } from '../stores/device'
+import { getDeviceId } from '../services/crypto'
 import ErrorMessage from '../components/ErrorMessage.vue'
 
 const error = ref<ApiError | null>(null)
 const nickname = ref<string>('')
-const user_store = useUserStore()
-const device_store = useDeviceStore()
+const userStore = useUserStore()
+const deviceStore = useDeviceStore()
 const loading = ref(false)
 
 const { data: devices } = useQuery({
     queryKey: ['devices'],
-    enabled: computed(() => user_store.logged_in),
+    enabled: computed(() => userStore.logged_in),
     queryFn: async () => {
-        const response = await device_store.fetch_our_devices()
+        const response = await deviceStore.fetchOurDevices()
         if (response.ok) {
             return response.value
         } else {
@@ -32,7 +33,7 @@ async function onSubmit() {
     try {
         loading.value = true
 
-        const response = await user_store.change_nickname(nickname.value)
+        const response = await userStore.change_nickname(nickname.value)
 
         if (!response.ok) {
             error.value = response.error
@@ -53,9 +54,9 @@ async function onSubmit() {
 
 <template>
     <div class="device-list">
-        <div v-if="user_store.me">
+        <div v-if="userStore.me">
             <h3>Your user ID</h3>
-            <code>{{ user_store.me.id }}</code>
+            <code>{{ userStore.me.id }}</code>
         </div>
         <h3>Change nickname</h3>
         <form @submit.prevent="onSubmit">
@@ -76,7 +77,7 @@ async function onSubmit() {
         <h3>Connected devices</h3>
         <ul>
             <li v-for="device in devices">
-                <div v-if="device.device_id === device_store.device_id()"><code>{{ device.device_id }}</code> (this device)</div>
+                <div v-if="device.device_id === getDeviceId()"><code>{{ device.device_id }}</code> (this device)</div>
                 <div v-else><code>{{ device.device_id }}</code></div>
             </li>
         </ul>
