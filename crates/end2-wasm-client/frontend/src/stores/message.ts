@@ -6,12 +6,18 @@ import { Err, Ok, request, type ApiResult } from '../api'
 import { useUserStore } from './user'
 import { useDeviceStore } from './device'
 import { useChannelStore } from './channel'
-import { useWebSocketStore } from './socket'
 import { getDeviceId, encryptMessage, decryptMessage } from '../services/crypto'
-import type { DecryptedMessage, EncryptedMessage, InboundChatMessage } from '../types/message'
+import type { DecryptedMessage, EncryptedMessage, InboundChatMessage, MessageReceivedEvent } from '../types/message'
+
+type PendingMessage = {
+    channel_id: string,
+    author_id: string,
+    plaintext: string,
+}
 
 export const useMessageStore = defineStore('message', () => {
     const userStore = useUserStore()
+    const pendingMessages = new Map<string, PendingMessage>()
 
     async function persistMessage(msg: DecryptedMessage): Promise<void> {
         const timestamp = msg.timestamp instanceof Date
@@ -46,7 +52,6 @@ export const useMessageStore = defineStore('message', () => {
 
     async function sendMessage(channelId: string, plaintext: string): Promise<ApiResult<void>> {
         const channelStore = useChannelStore()
-        const socket = useWebSocketStore()
 
         if (!userStore.me) {
             return Err({ status: 0, message: 'not logged in' })
@@ -76,15 +81,17 @@ export const useMessageStore = defineStore('message', () => {
             }
         }
 
-        socket.send(message)
-
-        await persistMessage({
-            message_id: message.message_id,
+        pendingMessages.set(message.message_id, {
             channel_id: channelId,
             author_id: userStore.me.id,
             plaintext,
-            timestamp: new Date(),
         })
+
+        const response = await request(`/channel/${channelId}/msg`, 'POST', message)
+        if (!response.ok) {
+            pendingMessages.delete(message.message_id)
+            return Err(response.error)
+        }
 
         return Ok(undefined as void)
     }
@@ -136,9 +143,28 @@ export const useMessageStore = defineStore('message', () => {
         }
     }
 
+    async function confirmMessage(event: MessageReceivedEvent): Promise<void> {
+        const pending = pendingMessages.get(event.message_id)
+        if (!pending) {
+            console.warn('received confirmation for unknown message:', event.message_id)
+            return
+        }
+
+        pendingMessages.delete(event.message_id)
+
+        await persistMessage({
+            message_id: event.message_id,
+            channel_id: pending.channel_id,
+            author_id: pending.author_id,
+            plaintext: pending.plaintext,
+            timestamp: new Date(event.timestamp),
+        })
+    }
+
     return {
         handleInbound,
         sendMessage,
+        confirmMessage,
         fetchHistory,
     }
 })

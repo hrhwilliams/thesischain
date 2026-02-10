@@ -1,4 +1,9 @@
-use axum::{Json, extract::State, response::IntoResponse, routing::{get, post}};
+use axum::{
+    Json,
+    extract::State,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use defs::Identity;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -9,9 +14,13 @@ const MINER_URL: &'static str = "url";
 #[derive(Clone, Default)]
 struct AppState;
 
-async fn register(State(_app_state): State<AppState>, Json(payload): Json<Identity>) -> Result<impl IntoResponse, StatusCode> {
+async fn register(
+    State(_app_state): State<AppState>,
+    Json(payload): Json<Identity>,
+) -> Result<impl IntoResponse, StatusCode> {
     let client = reqwest::Client::new();
-    let response = client.post(MINER_URL)
+    let response = client
+        .post(MINER_URL)
         .json(&payload)
         .send()
         .await
@@ -21,7 +30,7 @@ async fn register(State(_app_state): State<AppState>, Json(payload): Json<Identi
 }
 
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error>{
+async fn main() -> Result<(), std::io::Error> {
     dotenvy::dotenv().ok();
 
     let port = std::env::var("RELAY_PORT")

@@ -7,11 +7,9 @@ impl Client {
         Self
     }
 
-    pub async fn try_connect(self, urls: &[&'static str]) -> Self{
+    pub async fn try_connect(self, urls: &[&'static str]) -> Self {
         Self
     }
 
-    pub async fn run(self) {
-
-    }
+    pub async fn run(self) {}
 }

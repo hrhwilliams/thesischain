@@ -692,6 +692,7 @@ dependencies = [
 name = "end2"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "axum",
  "axum-extra",
@@ -727,7 +728,9 @@ dependencies = [
  "reqwest 0.13.1",
  "serde",
  "serde_json",
+ "time",
  "tokio",
+ "uuid",
  "vodozemac",
 ]
 
@@ -735,7 +738,6 @@ dependencies = [
 name = "end2-wasm-client"
 version = "0.1.0"
 dependencies = [
- "base64",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

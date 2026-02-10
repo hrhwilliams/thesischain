@@ -28,3 +28,9 @@ export type EncryptedMessage = {
     channel_id: string,
     payloads: EncryptedMessagePayload[],
 }
+
+export type MessageReceivedEvent = {
+    message_id: string,
+    channel_id: string,
+    timestamp: string,
+}

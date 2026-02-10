@@ -1,33 +1,53 @@
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Write;
+
 use anyhow::Result;
 use reqwest::{Client, RequestBuilder, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+use uuid::Uuid;
+use vodozemac::{Curve25519PublicKey, olm::Session};
 
-use crate::device::{Device, DeviceInfo, Otk};
+use crate::device::{
+    DecryptedMessage, Device, DeviceInfo, InboundChatMessage, MessagePayload, Otk,
+};
 
 mod device;
 
 #[derive(Deserialize)]
 struct UserInfo {
-    pub id: String,
+    pub id: Uuid,
     pub username: String,
     pub nickname: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct ChannelInfo {
-    pub channel_id: String,
+    pub channel_id: Uuid,
     pub participants: Vec<UserInfo>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ChannelId {
-    pub channel_id: String,
+    pub channel_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChatMessage {
+    pub message_id: Uuid,
+    pub device_id: Uuid,
+    pub channel_id: Uuid,
+    pub payloads: Vec<MessagePayload>,
 }
 
 struct ApiClient {
     client: Client,
     device: Device,
-    user_id: String,
+    // device_id, session
+    sessions: HashMap<Uuid, Session>,
+    // channel_id, (message_id, message)
+    histories: HashMap<Uuid, BTreeMap<Uuid, DecryptedMessage>>,
+    user_id: Uuid,
     username: String,
     password: String,
 }
@@ -35,7 +55,7 @@ struct ApiClient {
 impl ApiClient {
     async fn new(username: &str, password: &str, device: Option<Device>) -> Result<Self> {
         let client = Client::new();
-        let user_info = client
+        let response = client
             .post("http://localhost:8081/api/auth/register")
             .json(&serde_json::json!({
                 "username": username,
@@ -43,7 +63,22 @@ impl ApiClient {
                 "confirm_password": password,
             }))
             .send()
-            .await?
+            .await?;
+
+        let response = if response.status() == 500 {
+            client
+                .post("http://localhost:8081/api/auth/login")
+                .json(&serde_json::json!({
+                    "username": username,
+                    "password": password,
+                }))
+                .send()
+                .await?
+        } else {
+            response
+        };
+
+        let user_info = response
             .error_for_status()?
             .json::<UserInfo>()
             .await?;
@@ -61,10 +96,10 @@ impl ApiClient {
                 .json::<DeviceInfo>()
                 .await?;
 
-            let device = Device::new(&device_info.device_id);
+            let device = Device::new(device_info.device_id);
 
             let _ = client
-                .post(&format!(
+                .put(&format!(
                     "http://localhost:8081/api/me/device/{}",
                     device_info.device_id
                 ))
@@ -80,6 +115,8 @@ impl ApiClient {
         Ok(Self {
             client,
             device,
+            sessions: HashMap::new(),
+            histories: HashMap::new(),
             user_id: user_info.id,
             username: username.to_string(),
             password: password.to_string(),
@@ -89,6 +126,12 @@ impl ApiClient {
     fn get(&self, endpoint: &str) -> RequestBuilder {
         self.client
             .get(format!("http://localhost:8081/api{}", endpoint))
+            .basic_auth(&self.username, Some(&self.password))
+    }
+
+    fn put(&self, endpoint: &str) -> RequestBuilder {
+        self.client
+            .put(format!("http://localhost:8081/api{}", endpoint))
             .basic_auth(&self.username, Some(&self.password))
     }
 
@@ -142,7 +185,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    async fn get_user_info(&self, user_id: &str) -> Result<UserInfo> {
+    async fn get_user_info(&self, user_id: Uuid) -> Result<UserInfo> {
         let response = self
             .get(&format!("/user/{}", user_id))
             .send()
@@ -153,7 +196,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    async fn get_user_devices(&self, user_id: &str) -> Result<Vec<DeviceInfo>> {
+    async fn get_user_devices(&self, user_id: Uuid) -> Result<Vec<DeviceInfo>> {
         let response = self
             .get(&format!("/user/{}/devices", user_id))
             .send()
@@ -164,7 +207,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    async fn get_device_info(&self, user_id: &str, device_id: &str) -> Result<DeviceInfo> {
+    async fn get_device_info(&self, user_id: Uuid, device_id: Uuid) -> Result<DeviceInfo> {
         let response = self
             .get(&format!("/user/{}/device/{}", user_id, device_id))
             .send()
@@ -181,7 +224,7 @@ impl ApiClient {
         }
     }
 
-    async fn get_device_otk(&self, user_id: &str, device_id: &str) -> Result<Otk> {
+    async fn get_device_otk(&self, user_id: Uuid, device_id: Uuid) -> Result<Otk> {
         let response = self
             .post(&format!("/user/{}/device/{}/otk", user_id, device_id))
             .send()
@@ -190,6 +233,112 @@ impl ApiClient {
             .await?;
 
         Ok(response)
+    }
+
+    async fn send_message(&mut self, channel_info: &ChannelInfo, plaintext: &str) -> Result<()> {
+        let mut payloads = vec![];
+
+        for participant in &channel_info.participants {
+            let device_ids = self.get_user_devices(participant.id).await?;
+
+            for device in device_ids {
+                let (session, payload) = if let Some(session) = self.sessions.remove(&device.device_id) {
+                    if session.has_received_message() {
+                        self.device.encrypt(session, &device, plaintext)
+                    } else {
+                        panic!("Must wait for other user to reply")
+                    }
+                } else {
+                    let otk = self
+                        .get_device_otk(participant.id, device.device_id)
+                        .await?;
+
+                    self.device.encrypt_otk(
+                        &device,
+                        plaintext,
+                        Curve25519PublicKey::from_base64(&otk.otk)?,
+                    )
+                }?;
+
+                self.sessions.insert(device.device_id, session);
+                payloads.push(payload);
+            }
+        }
+
+        let message = ChatMessage {
+            message_id: Uuid::now_v7(),
+            device_id: self.device.id(),
+            channel_id: channel_info.channel_id,
+            payloads,
+        };
+
+        self.post(&format!("/channel/{}/msg", channel_info.channel_id))
+            .json(&message)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        Ok(())
+    }
+
+    async fn get_history(&mut self, channel_id: Uuid) -> Result<Vec<DecryptedMessage>> {
+        let last_message_id = self
+            .histories
+            .get(&channel_id)
+            .and_then(|h| h.keys().last().copied());
+
+        let mut url = format!(
+            "/channel/{}/history?device={}",
+            channel_id,
+            self.device.id()
+        );
+
+        if let Some(last) = last_message_id {
+            let _ = write!(url, "&after={}", last);
+        }
+
+        let messages = self
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<InboundChatMessage>>()
+            .await?;
+
+        let mut decrypted_messages = Vec::with_capacity(messages.len());
+        let mut devices = HashMap::<Uuid, DeviceInfo>::new();
+
+        for message in messages {
+            let device_id = message.device_id;
+            let device_info = if let Some(device_info) = devices.get(&device_id) {
+                device_info.clone()
+            } else {
+                let device_info = self.get_device_info(message.author_id, device_id).await?;
+
+                devices.insert(device_id, device_info.clone());
+                device_info
+            };
+
+            let (session, plaintext) = if message.is_pre_key {
+                self.device.decrypt_otk(&device_info, message)?
+            } else {
+                let session = self
+                    .sessions
+                    .remove(&message.device_id)
+                    .expect("Missing session");
+                self.device.decrypt(session, &device_info, message)?
+            };
+
+            self.sessions.insert(device_id, session);
+            decrypted_messages.push(plaintext);
+        }
+
+        let history = self.histories.entry(channel_id).or_default();
+
+        for plaintext in decrypted_messages {
+            history.insert(plaintext.message_id, plaintext);
+        }
+
+        Ok(history.values().cloned().collect())
     }
 
     async fn me(&self) -> Result<UserInfo> {
@@ -205,38 +354,88 @@ impl ApiClient {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Create users
     let mut client1 = ApiClient::new("maki1", "abc", None).await?;
     let mut client2 = ApiClient::new("maki2", "abc", None).await?;
 
+    // Upload one-time keys for users
     client1.upload_otks().await?;
     client2.upload_otks().await?;
 
+    // Client 1 creates a channel to message Client 2 through
     client1.create_channel("maki2").await?;
 
+    // Client 2 lists the channels they are in and selects the first one
     let channels1 = client1.channels().await?;
     let channel1_id = channels1.first().unwrap();
     let channel1_info = client1.get_channel_participants(channel1_id).await?;
-    for participant in channel1_info.participants {
-        let user = client1.get_user_info(&participant.id).await?;
-        let device_ids = client1.get_user_devices(&participant.id).await?;
-        let mut devices = vec![];
 
-        for device in device_ids {
-            devices.push(client1.get_device_info(&user.id, &device.device_id).await?);
+    // Client 1 sends a message to the channel
+    client1.send_message(&channel1_info, "hello").await?;
 
-            if device.device_id != client1.device.id() {
-                let otk = client1
-                    .get_device_otk(&participant.id, &device.device_id)
-                    .await?;
-                println!("{}", otk.id);
+    let history = client1.get_history(channel1_id.channel_id).await?;
 
-                // now can actually encrypt
-            }
-        }
-        println!("{:?}", devices);
+    println!("Client 1 history ---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
     }
 
-    client2.channels().await?;
+    // Client 2 lists the channels they are in, selects the first one, and reads the history
+    let channels2 = client2.channels().await?;
+    let channel2_id = channels2.first().unwrap();
+    let channel2_info = client2.get_channel_participants(channel2_id).await?;
+
+    let history = client2.get_history(channel2_id.channel_id).await?;
+
+    println!("Client 2 history ---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
+    }
+    println!("---");
+
+    // Client 2 responds
+    client2.send_message(&channel1_info, "hello!").await?;
+
+    // Client 1 reads the history
+    let history = client1.get_history(channel1_id.channel_id).await?;
+
+    println!("Client 1 history ---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
+    }
+
+    // Client 2 reads the history again
+    let history = client2.get_history(channel2_id.channel_id).await?;
+
+    println!("Client 2 history ---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
+    }
+    println!("---");
+
+    // Client 2 sends a message
+    client2.send_message(&channel2_info, "hello again!").await?;
+
+    // Client 1 sends a message
+    client1.send_message(&channel1_info, "how are you?").await?;
+
+    // Client 1 reads the history
+    let history = client1.get_history(channel2_id.channel_id).await?;
+
+    println!("---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
+    }
+    println!("---");
+
+    // Client 2 reads the history again
+    let history = client2.get_history(channel2_id.channel_id).await?;
+
+    println!("Client 2 history ---");
+    for message in history {
+        println!("{}", serde_json::to_string_pretty(&message)?);
+    }
+    println!("---");
 
     Ok(())
 }

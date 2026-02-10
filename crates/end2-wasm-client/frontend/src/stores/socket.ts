@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { shallowRef, ref } from 'vue'
 import type { DeviceId, DeviceInfo } from '../types/device'
 import type { ChannelInfo } from '../types/channel'
-import type { EncryptedMessage, InboundChatMessage } from '../types/message'
+import type { InboundChatMessage, MessageReceivedEvent } from '../types/message'
 import { useChannelStore } from './channel'
 import { useMessageStore } from './message'
 
@@ -10,6 +10,7 @@ type WsEvent =
     | { counter: number, type: 'channel_created', data: ChannelInfo }
     | { counter: number, type: 'device_added', data: DeviceInfo }
     | { counter: number, type: 'message', data: InboundChatMessage }
+    | { counter: number, type: 'message_received', data: MessageReceivedEvent }
     | { counter: number, type: 'ping', data: null }
 
 export const useWebSocketStore = defineStore('socket', () => {
@@ -31,6 +32,7 @@ export const useWebSocketStore = defineStore('socket', () => {
             }
         }
 
+        counter.value = -1
         ws.value = new WebSocket(`wss://chat.fiatlux.dev/api/me/device/${deviceId}/ws`)
 
         ws.value.onopen = () => {
@@ -66,6 +68,9 @@ export const useWebSocketStore = defineStore('socket', () => {
                 case 'message':
                     await messageStore.handleInbound(payload.data)
                     break
+                case 'message_received':
+                    await messageStore.confirmMessage(payload.data)
+                    break
                 case 'device_added':
                 case 'ping':
                     break
@@ -89,19 +94,6 @@ export const useWebSocketStore = defineStore('socket', () => {
         }, delay)
     }
 
-    function send(message: EncryptedMessage) {
-        if (!ws.value) {
-            console.error('socket null')
-            return
-        }
-
-        if (ws.value.readyState === WebSocket.OPEN) {
-            ws.value.send(JSON.stringify(message))
-        } else {
-            console.error('socket not open')
-        }
-    }
-
     function disconnect() {
         ws.value?.close()
         ws.value = null
@@ -110,7 +102,6 @@ export const useWebSocketStore = defineStore('socket', () => {
 
     return {
         connect,
-        send,
         disconnect,
     }
 })

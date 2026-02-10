@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(npx vue-tsc:*)"
+    ]
+  }
+}

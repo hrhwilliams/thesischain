@@ -59,10 +59,10 @@ useQuery({
     <div ref="history" class="message-history">
         <div v-for="message in messages" :key="message.message_id" class="message">
             <div v-if="userStore.has_nickname(message.author_id)">
-                <span class="author">{{ userStore.get_display_name(message.author_id) }} ({{ userStore.get_username(message.author_id) }})</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+                <span class="author">{{ userStore.get_display_name(message.author_id) }} ({{ userStore.get_username(message.author_id) }})</span> <span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
             </div>
             <div v-else>
-                <span class="author">{{ userStore.get_username(message.author_id) }}</span><span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
+                <span class="author">{{ userStore.get_username(message.author_id) }}</span> <span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
             </div>
             <div class="content">{{ message.plaintext }}</div>
         </div>

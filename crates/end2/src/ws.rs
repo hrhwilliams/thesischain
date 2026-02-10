@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -25,4 +25,18 @@ pub enum WsEvent {
     Message(OutboundChatMessage),
     MessageReceived(MessageId),
     NicknameChanged(NewNickname),
+}
+
+/// Wraps a `WsEvent` with a monotonic counter for replay detection.
+#[derive(Clone, Debug, Serialize)]
+pub struct CountedEvent {
+    pub counter: u64,
+    #[serde(flatten)]
+    pub event: WsEvent,
+}
+
+/// Client replay request: resend all events after the given counter.
+#[derive(Debug, Deserialize)]
+pub struct ReplayRequest {
+    pub replay: i64,
 }

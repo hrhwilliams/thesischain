@@ -20,12 +20,9 @@ fn random_key() -> SigningKey {
 async fn main() -> Result<(), std::io::Error> {
     dotenvy::dotenv().ok();
 
-    let username = std::env::var("USERNAME")
-        .unwrap_or(random_username());
-    let signing_key = std::env::var("SIGNING_KEY")
-        .unwrap_or(random_key());
-    let identity = Identity::new(username, signing_key)
-        .expect("identity");
+    let username = std::env::var("USERNAME").unwrap_or(random_username());
+    let signing_key = std::env::var("SIGNING_KEY").unwrap_or(random_key());
+    let identity = Identity::new(username, signing_key).expect("identity");
 
     let client = Client::new(identity)
         .try_connect(BOOTSTRAP_URLS)

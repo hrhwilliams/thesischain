@@ -1,6 +1,4 @@
-use crate::{
-    ApiError, AppState, InboundChatMessage, MessageId, OutboundChatMessage, User, WsEvent,
-};
+use crate::{ApiError, AppState, CountedEvent, ReplayRequest, User, WsEvent};
 use axum::{
     extract::{
         Path, State, WebSocketUpgrade,
@@ -9,9 +7,8 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{SinkExt, StreamExt};
-use time::OffsetDateTime;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
-use tokio::time::{Duration, timeout};
+use tokio::time::{Duration, interval, timeout};
 use uuid::Uuid;
 
 #[tracing::instrument(skip(app_state, ws))]
@@ -35,53 +32,42 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
 
     app_state.register_device(device_id, device_tx).await;
 
+    let mut next_counter: u64 = 0;
+    let mut history: Vec<CountedEvent> = Vec::new();
+    let mut ping_interval = interval(Duration::from_secs(30));
+
     loop {
         tokio::select! {
+            _ = ping_interval.tick() => {
+                if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
+                    break;
+                }
+            },
             read = ws_rx.next() => {
                 match read {
                     Some(Ok(Message::Text(text))) => {
-                        let msg = match serde_json::from_str::<InboundChatMessage>(&text) {
-                            Ok(msg) => msg,
-                            Err(e) => {
-                                tracing::warn!("invalid inbound chat message in websocket: '{}'", e);
-                                continue;
+                        if let Ok(req) = serde_json::from_str::<ReplayRequest>(&text) {
+                            let from = if req.replay < 0 { 0 } else { req.replay as u64 + 1 };
+                            tracing::info!("replaying events from counter {from}");
+
+                            for event in &history {
+                                if event.counter >= from {
+                                    let json = match serde_json::to_string(event) {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            tracing::error!("failed to serialize replay event: {e}");
+                                            continue;
+                                        }
+                                    };
+
+                                    if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into()))).await.is_err() {
+                                        tracing::warn!("timed out sending replay message");
+                                        break;
+                                    }
+                                }
                             }
-                        };
-
-                        let (message, devices_payload) = match app_state.save_message(&user, msg).await {
-                            Ok(msg) => msg,
-                            Err(e) => {
-                                tracing::error!("failed to save message {:?}", e);
-                                break;
-                            }
-                        };
-
-                        tracing::info!("got message and {} payloads for it", devices_payload.len());
-                        for payload in devices_payload {
-                            if let Some(recipient) = app_state.get_broadcaster_for_device(payload.recipient_device_id).await {
-                                let outbound = OutboundChatMessage {
-                                    author_id: message.sender_id,
-                                    message_id: message.id,
-                                    device_id: message.sender_device_id,
-                                    channel_id: message.channel_id,
-                                    ciphertext: payload.ciphertext,
-                                    timestamp: message.created,
-                                    is_pre_key: payload.is_pre_key,
-                                };
-
-                                let _ = recipient.send(WsEvent::Message(outbound)).await;
-                                tracing::info!("sending message");
-                            } else {
-                                tracing::warn!("message for unregistered device");
-                            }
-                        }
-
-                        if let Some(sender) = app_state.get_broadcaster_for_device(message.sender_device_id).await {
-                            let _ = sender.send(WsEvent::MessageReceived(MessageId {
-                                message_id: message.id,
-                                channel_id: message.channel_id,
-                                timestamp: OffsetDateTime::now_utc()
-                            })).await;
+                        } else {
+                            tracing::warn!("unexpected text message on websocket: '{text}'");
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => {
@@ -94,13 +80,18 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
             event = user_rx.recv() => {
                 match event {
                     Ok(event) => {
-                        let json = match serde_json::to_string(&event) {
+                        let counted = CountedEvent { counter: next_counter, event };
+                        next_counter += 1;
+
+                        let json = match serde_json::to_string(&counted) {
                             Ok(s) => s,
                             Err(e) => {
-                                tracing::error!("failed to serialize into websocket message {}", e);
+                                tracing::error!("failed to serialize websocket message: {e}");
                                 continue;
                             }
                         };
+
+                        history.push(counted);
 
                         if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into()))).await.is_err() {
                             tracing::warn!("timed out sending websocket message");
@@ -108,7 +99,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                         }
                     }
                     Err(RecvError::Lagged(n)) => {
-                        tracing::info!("client lagged {} messages", n);
+                        tracing::info!("client lagged {n} messages");
                     }
                     Err(_) => {
                         tracing::info!("closing websocket");
@@ -117,20 +108,23 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                 }
             },
             Some(event) = device_rx.recv() => {
-                let json = match serde_json::to_string(&event) {
+                let counted = CountedEvent { counter: next_counter, event };
+                next_counter += 1;
+
+                let json = match serde_json::to_string(&counted) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::error!("failed to serialize into websocket message {}", e);
+                        tracing::error!("failed to serialize websocket message: {e}");
                         continue;
                     }
                 };
+
+                history.push(counted);
 
                 if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into()))).await.is_err() {
                     tracing::warn!("timed out sending websocket message");
                     break;
                 }
-
-                tracing::info!("sent message");
             }
         }
     }
