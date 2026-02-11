@@ -8,18 +8,20 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS backend-builder
 WORKDIR /build
-RUN apt update && apt install -y libpq-dev openssl libssl-dev pkg-config
+RUN apt update && apt install -y linux-perf libpq-dev openssl libssl-dev pkg-config
 RUN cargo install diesel_cli --no-default-features --features postgres
+RUN cargo install flamegraph
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release
 
 FROM debian:trixie-slim AS runtime
-RUN apt-get  update && apt-get install -y postgresql
+RUN apt-get  update && apt-get install -y linux-perf postgresql
 WORKDIR /app
 COPY --from=backend-builder /build/target/release/end2 .
 COPY --from=backend-builder /usr/local/cargo/bin/diesel /usr/local/bin/diesel
+COPY --from=backend-builder /usr/local/cargo/bin/flamegraph /usr/local/bin/flamegraph
 COPY --from=backend-builder /build/migrations /app/migrations
 COPY --from=backend-builder /build/entrypoint.sh .
 ENTRYPOINT [ "./entrypoint.sh" ]

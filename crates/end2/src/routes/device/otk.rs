@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::{ApiError, AppError, AppState, InboundOtks, User};
 
+#[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]
 pub async fn get_otks(
     State(app_state): State<AppState>,
@@ -34,6 +35,7 @@ pub async fn upload_otks(
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 
+#[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_device_otk(
     State(app_state): State<AppState>,

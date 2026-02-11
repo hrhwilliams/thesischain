@@ -37,22 +37,22 @@ pub enum ExtractError {
 impl From<ExtractError> for ApiError {
     fn from(value: ExtractError) -> Self {
         match value {
-            ExtractError::NoSession => ApiError {
+            ExtractError::NoSession => Self {
                 status: StatusCode::UNAUTHORIZED.into(),
                 message: "missing session cookie".to_string(),
                 detail: None,
             },
-            ExtractError::NoUser => ApiError {
+            ExtractError::NoUser => Self {
                 status: StatusCode::UNAUTHORIZED.into(),
                 message: "no such user".to_string(),
                 detail: None,
             },
-            ExtractError::CookieError(s) => ApiError {
+            ExtractError::CookieError(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),
                 message: "error extracting cookie".to_string(),
                 detail: Some(s),
             },
-            ExtractError::InvalidSessionId(s) => ApiError {
+            ExtractError::InvalidSessionId(s) => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "bad session token".to_string(),
                 detail: Some(s),
@@ -170,7 +170,7 @@ impl From<AppError> for ApiError {
 
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -209,6 +209,7 @@ pub enum AppError {
     ValueError(String),
 }
 
+#[derive(Debug)]
 pub enum RegistrationError {
     InvalidUsernameOrPassword,
     PasswordMismatch,
@@ -240,12 +241,7 @@ impl From<LoginError> for ApiError {
                 message: "invalid discord ID".to_string(),
                 detail: Some(s),
             },
-            LoginError::InvalidPassword => Self {
-                status: StatusCode::UNAUTHORIZED.into(),
-                message: "invalid password or username".to_string(),
-                detail: None,
-            },
-            LoginError::NoSuchUser => Self {
+            LoginError::InvalidPassword | LoginError::NoSuchUser => Self {
                 status: StatusCode::UNAUTHORIZED.into(),
                 message: "invalid password or username".to_string(),
                 detail: None,
@@ -275,9 +271,8 @@ impl From<OAuthError> for AppError {
     fn from(value: OAuthError) -> Self {
         match value {
             OAuthError::FailedQuery => Self::OAuth("failed to query".to_string()),
-            OAuthError::FailedToBuildClient(s) => Self::OAuth(s),
+            OAuthError::FailedToBuildClient(s) | OAuthError::FailedToGetToken(s) => Self::OAuth(s),
             OAuthError::FailedToCreateAuthUrl => Self::OAuth("failed to create url".to_string()),
-            OAuthError::FailedToGetToken(s) => Self::OAuth(s),
             OAuthError::FailedToMakeSession => Self::OAuth("failed to make session".to_string()),
             OAuthError::FailedToRetrieveAttempt => {
                 Self::OAuth("failed to retrieve challenge".to_string())
@@ -285,5 +280,54 @@ impl From<OAuthError> for AppError {
             OAuthError::FailedToStoreAttempt => Self::OAuth("failed to store attempt".to_string()),
             OAuthError::StateMismatch => Self::OAuth("states did not match".to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_error_unauthorized_maps_to_401() {
+        let api: ApiError = AppError::Unauthorized.into();
+        assert_eq!(api.status, 401);
+    }
+
+    #[test]
+    fn app_error_no_such_user_maps_to_400() {
+        let api: ApiError = AppError::NoSuchUser.into();
+        assert_eq!(api.status, 400);
+    }
+
+    #[test]
+    fn app_error_query_failed_maps_to_500() {
+        let api: ApiError = AppError::QueryFailed("test".into()).into();
+        assert_eq!(api.status, 500);
+    }
+
+    #[test]
+    fn login_error_invalid_password_maps_to_401() {
+        let api: ApiError = LoginError::InvalidPassword.into();
+        assert_eq!(api.status, 401);
+        assert_eq!(api.message, "invalid password or username");
+    }
+
+    #[test]
+    fn login_error_no_such_user_same_as_invalid_password() {
+        let api: ApiError = LoginError::NoSuchUser.into();
+        assert_eq!(api.status, 401);
+        assert_eq!(api.message, "invalid password or username");
+    }
+
+    #[test]
+    fn registration_error_password_mismatch_maps_to_400() {
+        let api: ApiError = RegistrationError::PasswordMismatch.into();
+        assert_eq!(api.status, 400);
+    }
+
+    #[test]
+    fn extract_error_no_session_maps_to_401() {
+        let api: ApiError = ExtractError::NoSession.into();
+        assert_eq!(api.status, 401);
     }
 }

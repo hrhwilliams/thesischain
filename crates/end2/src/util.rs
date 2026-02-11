@@ -20,7 +20,7 @@ where
 
 #[must_use]
 pub fn is_valid_username(name: &str) -> bool {
-    if name.len() < 3 || name.len() > 20 {
+    if name.len() < 3 {
         return false;
     }
 
@@ -30,9 +30,48 @@ pub fn is_valid_username(name: &str) -> bool {
 
 #[must_use]
 pub fn is_valid_nickname(name: &str) -> bool {
-    if name.trim().len() < 3 || name.len() > 20 {
+    if name.len() < 3 {
         return false;
     }
 
     name.chars().all(|c| !c.is_control())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_usernames() {
+        assert!(is_valid_username("abc"));
+        assert!(is_valid_username("user_name"));
+        assert!(is_valid_username("a.b.c"));
+        assert!(is_valid_username("abc123"));
+        assert!(is_valid_username("aaa"));
+    }
+
+    #[test]
+    fn invalid_usernames() {
+        assert!(!is_valid_username("ab"));
+        assert!(!is_valid_username("a"));
+        assert!(!is_valid_username(""));
+        assert!(!is_valid_username("UPPERCASE"));
+        assert!(!is_valid_username("has space"));
+        assert!(!is_valid_username("a!b"));
+    }
+
+    #[test]
+    fn valid_nicknames() {
+        assert!(is_valid_nickname("Abc"));
+        assert!(is_valid_nickname("A B C"));
+        assert!(is_valid_nickname("nickname!"));
+    }
+
+    #[test]
+    fn invalid_nicknames() {
+        assert!(!is_valid_nickname("ab"));
+        assert!(!is_valid_nickname("a"));
+        assert!(!is_valid_nickname(""));
+        assert!(!is_valid_nickname("ab\0c"));
+    }
 }

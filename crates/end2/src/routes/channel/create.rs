@@ -42,9 +42,13 @@ pub async fn create_channel_with(
 pub async fn send_message(
     State(app_state): State<AppState>,
     user: User,
-    Path(_channel_id): Path<Uuid>,
+    Path(channel_id): Path<Uuid>,
     Json(message): Json<InboundChatMessage>,
 ) -> Result<impl IntoResponse, ApiError> {
+    if channel_id != message.channel_id {
+        return Err(AppError::UserError("channel_id mismatch".to_string()).into());
+    }
+
     let sender_device_id = message.device_id;
     let (saved_message, payloads) = app_state.save_message(&user, message).await?;
 

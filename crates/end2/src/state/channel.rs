@@ -76,37 +76,46 @@ impl AppState {
 
     pub async fn get_channel_history(
         &self,
-        _user: &User,
+        user: &User,
         channel_id: Uuid,
         device_id: Uuid,
         after: Option<Uuid>,
     ) -> Result<Vec<OutboundChatMessage>, AppError> {
-        let mut conn = self.get_conn()?;
-
-        let mut query = message::table
-            .inner_join(
-                message_payload::table.on(message::id
-                    .eq(message_payload::message_id)
-                    .and(message_payload::recipient_device_id.eq(device_id))),
-            )
-            .filter(message::channel_id.eq(channel_id))
-            .select((
-                message::id,
-                message::sender_device_id,
-                message::channel_id,
-                message::sender_id,
-                message_payload::ciphertext,
-                message::created,
-                message_payload::is_pre_key,
-            ))
-            .order(message::id.asc())
-            .into_boxed();
-
-        if let Some(after) = after {
-            query = query.filter(message::id.gt(after))
+        let participants = self.get_channel_participants(channel_id).await?;
+        if !participants.contains(user) {
+            return Err(AppError::Unauthorized);
         }
 
-        let history = query.load::<OutboundChatMessage>(&mut conn)?;
+        let mut conn = self.get_conn()?;
+
+        let history = tokio::task::spawn_blocking(move || {
+            let mut query = message::table
+                .inner_join(
+                    message_payload::table.on(message::id
+                        .eq(message_payload::message_id)
+                        .and(message_payload::recipient_device_id.eq(device_id))),
+                )
+                .filter(message::channel_id.eq(channel_id))
+                .select((
+                    message::id,
+                    message::sender_device_id,
+                    message::channel_id,
+                    message::sender_id,
+                    message_payload::ciphertext,
+                    message::created,
+                    message_payload::is_pre_key,
+                ))
+                .order(message::id.asc())
+                .into_boxed();
+
+            if let Some(after) = after {
+                query = query.filter(message::id.gt(after));
+            }
+
+            query.load::<OutboundChatMessage>(&mut conn)
+        })
+        .await??;
+
         Ok(history)
     }
 
@@ -148,21 +157,27 @@ impl AppState {
 
     pub async fn get_user_otk(&self, user: &User, device_id: Uuid) -> Result<Otk, AppError> {
         let mut conn = self.get_conn()?;
+        let user_id = user.id;
 
-        let otk = one_time_key::table
-            .inner_join(device::table.on(one_time_key::device_id.eq(device::id)))
-            .filter(
-                one_time_key::device_id
-                    .eq(device_id)
-                    .and(device::user_id.eq(user.id)),
-            )
-            .select(Otk::as_select())
-            .first(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+        let otk = tokio::task::spawn_blocking(move || {
+            let otk = one_time_key::table
+                .inner_join(device::table.on(one_time_key::device_id.eq(device::id)))
+                .filter(
+                    one_time_key::device_id
+                        .eq(device_id)
+                        .and(device::user_id.eq(user_id)),
+                )
+                .select(Otk::as_select())
+                .first(&mut conn)
+                .map_err(|e| AppError::QueryFailed(e.to_string()))?;
 
-        diesel::delete(one_time_key::table.find(otk.id))
-            .execute(&mut conn)
-            .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+            diesel::delete(one_time_key::table.find(otk.id))
+                .execute(&mut conn)
+                .map_err(|e| AppError::QueryFailed(e.to_string()))?;
+
+            Ok::<_, AppError>(otk)
+        })
+        .await??;
 
         Ok(otk)
     }

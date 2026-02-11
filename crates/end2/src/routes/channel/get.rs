@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::{ApiError, AppState, User};
 
+#[tracing::instrument(skip(app_state))]
 pub async fn get_channel_info(
     State(app_state): State<AppState>,
     user: User,
@@ -15,6 +16,7 @@ pub async fn get_channel_info(
     Ok(Json(app_state.get_channel_info(&user, channel_id).await?))
 }
 
+#[tracing::instrument(skip(app_state))]
 pub async fn get_all_channels(
     State(app_state): State<AppState>,
     user: User,

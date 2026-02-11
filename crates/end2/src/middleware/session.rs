@@ -23,7 +23,6 @@ pub async fn create_session(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // let api_route = parts.uri.path().starts_with("/api");
     let req = Request::from_parts(parts, body);
 
     if let Some(session_cookie) = jar.get("Session") {
@@ -45,10 +44,12 @@ pub async fn create_session(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    tracing::debug!("created new session {}", session.id);
+
     let cookie = Cookie::build(("Session", session.id.to_string()))
         .http_only(true)
-        // .secure(true)
-        .same_site(SameSite::None)
+        .secure(true)
+        .same_site(SameSite::Lax)
         .path("/")
         .expires(Expiration::Session)
         .max_age(Duration::days(7))

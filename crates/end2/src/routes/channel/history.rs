@@ -14,6 +14,7 @@ pub struct HistoryRequest {
     pub after: Option<Uuid>,
 }
 
+#[tracing::instrument(skip(app_state))]
 pub async fn get_channel_history(
     State(app_state): State<AppState>,
     user: User,

@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;

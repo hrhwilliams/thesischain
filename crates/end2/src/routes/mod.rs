@@ -12,7 +12,7 @@ mod ws;
 pub struct Api;
 
 impl Api {
-    pub fn new() -> axum::Router<AppState> {
+    pub fn router() -> axum::Router<AppState> {
         axum::Router::new()
             .route("/auth/register", post(auth::register))
             .route("/auth/login", post(auth::login))
@@ -22,7 +22,7 @@ impl Api {
             .route("/channel", post(channel::create_channel_with))
             .route(
                 "/channel/{channel_id}",
-                get(channel::get_channel_info), /* .post(channel::send_message) */
+                get(channel::get_channel_info),
             )
             .route(
                 "/channel/{channel_id}/history",

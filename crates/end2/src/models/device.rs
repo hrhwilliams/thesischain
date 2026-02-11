@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use ed25519_dalek::Signature;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -37,7 +37,7 @@ pub struct InboundDevice {
 }
 
 impl NewDevice {
-    pub fn from_network(user_id: Uuid, device: InboundDevice) -> Result<Self, AppError> {
+    pub fn from_network(user_id: Uuid, device: &InboundDevice) -> Result<Self, AppError> {
         let x25519 = Curve25519PublicKey::from_base64(&device.x25519)
             .map_err(|e| AppError::InvalidKey(e.to_string()))?;
         let ed25519 = Ed25519PublicKey::from_base64(&device.ed25519)
@@ -56,7 +56,7 @@ impl NewDevice {
             .verify_strict(&message, &signature)
             .map_err(|e| AppError::ChallengeFailed(e.to_string()))?;
 
-        Ok(NewDevice {
+        Ok(Self {
             user_id,
             ed25519: Some(ed25519.as_bytes().to_vec()),
             x25519: Some(x25519.as_bytes().to_vec()),

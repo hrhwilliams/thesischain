@@ -1,5 +1,5 @@
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -60,5 +60,56 @@ impl TryFrom<InboundUser> for NewUser {
             username: inbound.username.trim().to_string(),
             password: Some(hash),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_inbound(username: &str, password: &str, confirm: &str) -> InboundUser {
+        InboundUser {
+            username: username.to_string(),
+            password: password.to_string(),
+            confirm_password: confirm.to_string(),
+        }
+    }
+
+    #[test]
+    fn valid_user_converts_successfully() {
+        let inbound = make_inbound("testuser", "password123", "password123");
+        let new_user = NewUser::try_from(inbound).expect("should succeed");
+        assert_eq!(new_user.username, "testuser");
+        assert!(new_user.password.is_some());
+    }
+
+    #[test]
+    fn trims_username() {
+        let inbound = make_inbound("  testuser  ", "password123", "password123");
+        // Note: the username "  testuser  " fails is_valid_username due to spaces,
+        // so trimming only applies to valid usernames. This tests that the validation
+        // rejects usernames with leading/trailing spaces.
+        let result = NewUser::try_from(inbound);
+        assert!(matches!(
+            result,
+            Err(RegistrationError::InvalidUsernameOrPassword)
+        ));
+    }
+
+    #[test]
+    fn password_mismatch_returns_error() {
+        let inbound = make_inbound("testuser", "password123", "different");
+        let result = NewUser::try_from(inbound);
+        assert!(matches!(result, Err(RegistrationError::PasswordMismatch)));
+    }
+
+    #[test]
+    fn invalid_username_returns_error() {
+        let inbound = make_inbound("AB", "password123", "password123");
+        let result = NewUser::try_from(inbound);
+        assert!(matches!(
+            result,
+            Err(RegistrationError::InvalidUsernameOrPassword)
+        ));
     }
 }

@@ -1,6 +1,6 @@
 use std::num::ParseIntError;
 
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;

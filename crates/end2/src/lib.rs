@@ -1,3 +1,5 @@
+#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+
 mod app;
 mod errors;
 mod extractors;

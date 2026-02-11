@@ -1,15 +1,43 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use anyhow::Result;
+use diesel::{PgConnection, r2d2::ConnectionManager};
+use end2::{App, OAuthHandler};
 use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
+use tokio::net::TcpListener;
 use uuid::Uuid;
 use vodozemac::{Curve25519PublicKey, olm::Session};
 
 use device::{DecryptedMessage, Device, DeviceInfo, InboundChatMessage, MessagePayload, Otk};
 
 mod device;
+
+static PORT_COUNTER: AtomicU16 = AtomicU16::new(9000);
+
+/// Spawns the app on a random port and returns the port number.
+pub async fn spawn_app() -> u16 {
+    let port = PORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let oauth = OAuthHandler::new(String::new(), String::new(), String::new());
+
+    let database_url = "postgres://postgres@localhost/postgres".to_string();
+    let manager = ConnectionManager::<PgConnection>::new(&database_url);
+    let pool = r2d2::Pool::builder()
+        .build(manager)
+        .expect("Failed to connect to Postgres");
+
+    let app = App::new(oauth, pool);
+    let listener = TcpListener::bind(("localhost", port))
+        .await
+        .expect("TcpListener");
+
+    tokio::spawn(async move { app.run(listener).await });
+
+    port
+}
 
 #[derive(Deserialize)]
 pub struct UserInfo {
@@ -47,13 +75,24 @@ pub struct ApiClient {
     user_id: Uuid,
     username: String,
     password: String,
+    base_url: String,
 }
 
 impl ApiClient {
     pub async fn new(username: &str, password: &str, device: Option<Device>) -> Result<Self> {
+        Self::with_port(username, password, device, 8081).await
+    }
+
+    pub async fn with_port(
+        username: &str,
+        password: &str,
+        device: Option<Device>,
+        port: u16,
+    ) -> Result<Self> {
+        let base_url = format!("http://localhost:{port}/api");
         let client = Client::new();
         let response = client
-            .post("http://localhost:8081/api/auth/register")
+            .post(format!("{base_url}/auth/register"))
             .json(&serde_json::json!({
                 "username": username,
                 "password": password,
@@ -62,9 +101,9 @@ impl ApiClient {
             .send()
             .await?;
 
-        let response = if response.status() == 500 {
+        let response = if !response.status().is_success() {
             client
-                .post("http://localhost:8081/api/auth/login")
+                .post(format!("{base_url}/auth/login"))
                 .json(&serde_json::json!({
                     "username": username,
                     "password": password,
@@ -77,12 +116,11 @@ impl ApiClient {
 
         let user_info = response.error_for_status()?.json::<UserInfo>().await?;
 
-        let device = if device.is_some() {
-            // SAFETY: checked in if statement above
-            unsafe { device.unwrap_unchecked() }
+        let device = if let Some(device) = device {
+            device
         } else {
             let device_info = client
-                .post("http://localhost:8081/api/me/device")
+                .post(format!("{base_url}/me/device"))
                 .basic_auth(username, Some(password))
                 .send()
                 .await?
@@ -93,8 +131,8 @@ impl ApiClient {
             let device = Device::new(device_info.device_id);
 
             let _ = client
-                .put(&format!(
-                    "http://localhost:8081/api/me/device/{}",
+                .put(format!(
+                    "{base_url}/me/device/{}",
                     device_info.device_id
                 ))
                 .basic_auth(username, Some(password))
@@ -114,25 +152,40 @@ impl ApiClient {
             user_id: user_info.id,
             username: username.to_string(),
             password: password.to_string(),
+            base_url,
         })
     }
 
     fn get(&self, endpoint: &str) -> RequestBuilder {
         self.client
-            .get(format!("http://localhost:8081/api{}", endpoint))
+            .get(format!("{}{endpoint}", self.base_url))
             .basic_auth(&self.username, Some(&self.password))
     }
 
     fn put(&self, endpoint: &str) -> RequestBuilder {
         self.client
-            .put(format!("http://localhost:8081/api{}", endpoint))
+            .put(format!("{}{endpoint}", self.base_url))
             .basic_auth(&self.username, Some(&self.password))
     }
 
     fn post(&self, endpoint: &str) -> RequestBuilder {
         self.client
-            .post(format!("http://localhost:8081/api{}", endpoint))
+            .post(format!("{}{endpoint}", self.base_url))
             .basic_auth(&self.username, Some(&self.password))
+    }
+
+    /// Send a raw POST request and return the response (for testing error paths).
+    pub async fn raw_post(
+        &self,
+        endpoint: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response> {
+        Ok(self.post(endpoint).json(body).send().await?)
+    }
+
+    /// Send a raw GET request and return the response (for testing error paths).
+    pub async fn raw_get(&self, endpoint: &str) -> Result<reqwest::Response> {
+        Ok(self.get(endpoint).send().await?)
     }
 
     pub async fn upload_otks(&mut self) -> Result<()> {

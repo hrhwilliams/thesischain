@@ -1,5 +1,5 @@
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use serde::Deserialize;
 use uuid::Uuid;
 

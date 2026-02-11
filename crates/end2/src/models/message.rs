@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -27,7 +27,8 @@ pub struct NewChatMessage {
 }
 
 impl NewChatMessage {
-    pub fn from_inbound(user: &User, message: &InboundChatMessage) -> Self {
+    #[must_use]
+    pub const fn from_inbound(user: &User, message: &InboundChatMessage) -> Self {
         Self {
             id: message.message_id,
             sender_id: user.id,

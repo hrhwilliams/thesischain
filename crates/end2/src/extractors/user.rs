@@ -14,7 +14,7 @@ impl User {
         parts: &mut Parts,
         app_state: &AppState,
     ) -> Result<Self, ExtractError> {
-        tracing::info!("cookie");
+        tracing::debug!("extracting user from request");
 
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
@@ -46,10 +46,10 @@ impl User {
             let (auth, b64) = auth
                 .to_str()
                 .map_err(|e| {
-                    ExtractError::CookieError(format!("invalid authorization header: {}", e))
+                    ExtractError::CookieError(format!("invalid authorization header: {e}"))
                 })?
                 .split_once(' ')
-                .ok_or(ExtractError::CookieError(
+                .ok_or_else(|| ExtractError::CookieError(
                     "invalid authorization header".to_string(),
                 ))?;
 
@@ -66,9 +66,9 @@ impl User {
             )
             .map_err(|_| ExtractError::CookieError("invalid authorization header".to_string()))?;
 
-            let (username, password): (&str, &str) = decoded.split_once(':').ok_or(
-                ExtractError::CookieError("invalid authorization header".to_string()),
-            )?;
+            let (username, password): (&str, &str) = decoded.split_once(':').ok_or_else(|| {
+                ExtractError::CookieError("invalid authorization header".to_string())
+            })?;
 
             let user = app_state
                 .login(username, password)
@@ -88,7 +88,7 @@ impl FromRequestParts<AppState> for User {
     async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
         Self::get_user_from_parts(parts, app_state)
             .await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }
 

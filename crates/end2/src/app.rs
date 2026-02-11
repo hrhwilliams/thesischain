@@ -41,7 +41,7 @@ impl App {
         let app_state = AppState::new(oauth, pool);
 
         let router = axum::Router::new()
-            .nest("/api", Api::new())
+            .nest("/api", Api::router())
             .layer(middleware::from_fn_with_state(
                 app_state.clone(),
                 create_session,
@@ -51,8 +51,8 @@ impl App {
                     .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
                     .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
                     .allow_origin([
-                        "http://127.0.0.1:8080".parse().unwrap(),
-                        "http://localhost:8080".parse().unwrap(),
+                        "http://127.0.0.1:8080".parse().expect("valid static URL"),
+                        "http://localhost:8080".parse().expect("valid static URL"),
                     ])
                     .allow_credentials(true),
             )

@@ -21,6 +21,35 @@ pub async fn handle_websocket(
     Ok(ws.on_upgrade(move |socket| websocket(socket, user, device_id, app_state)))
 }
 
+/// Serializes a `CountedEvent`, pushes it to history, and sends it over the websocket.
+/// Returns `Ok(())` on success, `Err(true)` if sending timed out (caller should break),
+/// or continues silently on serialization failure.
+async fn send_event(
+    ws_tx: &mut futures::stream::SplitSink<WebSocket, Message>,
+    history: &mut Vec<CountedEvent>,
+    counted: CountedEvent,
+) -> Result<(), ()> {
+    let json = match serde_json::to_string(&counted) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("failed to serialize websocket message: {e}");
+            return Ok(());
+        }
+    };
+
+    history.push(counted);
+
+    if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into())))
+        .await
+        .is_err()
+    {
+        tracing::warn!("timed out sending websocket message");
+        return Err(());
+    }
+
+    Ok(())
+}
+
 #[tracing::instrument(skip(socket, app_state))]
 pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state: AppState) {
     let (mut ws_tx, mut ws_rx) = socket.split();
@@ -47,6 +76,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                 match read {
                     Some(Ok(Message::Text(text))) => {
                         if let Ok(req) = serde_json::from_str::<ReplayRequest>(&text) {
+                            #[allow(clippy::cast_sign_loss)]
                             let from = if req.replay < 0 { 0 } else { req.replay as u64 + 1 };
                             tracing::info!("replaying events from counter {from}");
 
@@ -83,18 +113,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                         let counted = CountedEvent { counter: next_counter, event };
                         next_counter += 1;
 
-                        let json = match serde_json::to_string(&counted) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                tracing::error!("failed to serialize websocket message: {e}");
-                                continue;
-                            }
-                        };
-
-                        history.push(counted);
-
-                        if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into()))).await.is_err() {
-                            tracing::warn!("timed out sending websocket message");
+                        if send_event(&mut ws_tx, &mut history, counted).await.is_err() {
                             break;
                         }
                     }
@@ -111,18 +130,7 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
                 let counted = CountedEvent { counter: next_counter, event };
                 next_counter += 1;
 
-                let json = match serde_json::to_string(&counted) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::error!("failed to serialize websocket message: {e}");
-                        continue;
-                    }
-                };
-
-                history.push(counted);
-
-                if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into()))).await.is_err() {
-                    tracing::warn!("timed out sending websocket message");
+                if send_event(&mut ws_tx, &mut history, counted).await.is_err() {
                     break;
                 }
             }

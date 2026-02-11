@@ -39,6 +39,7 @@ pub struct OAuthResponse {
     pub state: String,
 }
 
+#[allow(clippy::too_many_lines)]
 #[tracing::instrument(skip(app_state))]
 pub async fn discord_redirect(
     State(app_state): State<AppState>,
@@ -49,11 +50,11 @@ pub async fn discord_redirect(
     let (csrf_token, web_session) = app_state
         .remove_from_session(web_session, "csrf_token")
         .await?
-        .ok_or(AppError::ValueError("missing value".to_string()))?;
+        .ok_or_else(|| AppError::ValueError("missing value".to_string()))?;
     let (pkce_verifier, web_session) = app_state
         .remove_from_session(web_session, "pkce_verifier")
         .await?
-        .ok_or(AppError::ValueError("missing value".to_string()))?;
+        .ok_or_else(|| AppError::ValueError("missing value".to_string()))?;
     let token = app_state
         .oauth
         .get_token(code, state, csrf_token, pkce_verifier)
@@ -82,5 +83,5 @@ pub async fn discord_redirect(
             .await?;
     }
 
-    Ok(Redirect::to("http://localhost:8080"))
+    Ok(Redirect::to("https://chat.fiatlux.dev"))
 }

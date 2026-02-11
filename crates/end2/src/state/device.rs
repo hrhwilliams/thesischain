@@ -67,8 +67,8 @@ impl AppState {
         device_keys: InboundDevice,
     ) -> Result<Device, AppError> {
         let mut conn = self.get_conn()?;
-        let new_device = NewDevice::from_network(device_id, device_keys)?;
         let user_id = user.id;
+        let new_device = NewDevice::from_network(user_id, &device_keys)?;
 
         let device = tokio::task::spawn_blocking(move || {
             diesel::update(device::table)

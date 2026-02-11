@@ -45,12 +45,12 @@ impl AppState {
     }
 
     pub async fn get_broadcaster(&self, user: &User) -> broadcast::Sender<WsEvent> {
-        let mut user_websockets = self.user_websockets.write().await;
-        let sender = user_websockets
+        self.user_websockets
+            .write()
+            .await
             .entry(user.id)
-            .or_insert_with(|| broadcast::Sender::new(128));
-
-        sender.clone()
+            .or_insert_with(|| broadcast::Sender::new(128))
+            .clone()
     }
 
     pub async fn get_broadcaster_for_device(
@@ -61,13 +61,12 @@ impl AppState {
         device_websockets.get(&device_id).cloned()
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, event))]
     pub async fn notify_user(&self, user: &User, event: WsEvent) {
-        tracing::info!("sending event");
         let broadcaster = self.get_broadcaster(user).await;
         match broadcaster.send(event) {
-            Ok(_) => {}
-            Err(e) => tracing::error!("failed to notify user: {}", e),
+            Ok(n) => tracing::debug!("notified user {} ({n} receivers)", user.id),
+            Err(e) => tracing::warn!("failed to notify user {}: {e}", user.id),
         }
     }
 

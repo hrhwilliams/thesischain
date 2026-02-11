@@ -57,7 +57,7 @@ impl AppState {
                 );
                 Value::Object(m)
             }
-            _ => unreachable!("only blob should be stored in web_session table"),
+            _ => return Err(AppError::ValueError("session blob is not an object".into())),
         };
 
         let web_session = tokio::task::spawn_blocking(move || {
@@ -93,7 +93,7 @@ impl AppState {
                 .get(key)
                 .cloned()
                 .and_then(|v| serde_json::from_value(v).ok()),
-            _ => unreachable!("only blob should be stored in web_session table"),
+            _ => return Err(AppError::ValueError("session blob is not an object".into())),
         };
 
         Ok(value)
@@ -111,7 +111,7 @@ impl AppState {
                 let value = m.remove(key).and_then(|v| serde_json::from_value(v).ok());
                 (value, Value::Object(m))
             }
-            _ => unreachable!("only blob should be stored in web_session table"),
+            _ => return Err(AppError::ValueError("session blob is not an object".into())),
         };
 
         if let Some(value) = value {

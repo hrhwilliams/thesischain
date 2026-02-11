@@ -14,6 +14,7 @@ pub struct Nickname {
     pub nickname: String,
 }
 
+#[tracing::instrument(skip(app_state))]
 pub async fn change_nickname(
     State(app_state): State<AppState>,
     user: User,
