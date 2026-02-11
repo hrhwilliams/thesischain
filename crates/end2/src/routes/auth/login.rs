@@ -15,7 +15,7 @@ pub async fn login(
     web_session: WebSession,
     Json(LoginRequest { username, password }): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = app_state.login(&username, &password).await?;
+    let user = app_state.auth.login(&username, &password).await?;
     app_state
         .insert_into_session(web_session, "user_id".to_string(), user.id)
         .await?;

@@ -12,7 +12,7 @@ pub async fn new_device(
     State(app_state): State<AppState>,
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
-    let new_device = app_state.new_device_for(&user).await?;
+    let new_device = app_state.keys.new_device_for(&user).await?;
     Ok(Json(new_device))
 }
 
@@ -24,6 +24,7 @@ pub async fn upload_keys(
     Json(device_keys): Json<InboundDevice>,
 ) -> Result<impl IntoResponse, ApiError> {
     let device = app_state
+        .keys
         .set_device_keys(&user, device_id, device_keys)
         .await?;
     Ok(Json(device))
@@ -37,6 +38,7 @@ pub async fn upload_keys_me(
 ) -> Result<impl IntoResponse, ApiError> {
     if let Some(device_id) = device_keys.device_id {
         let device = app_state
+            .keys
             .set_device_keys(&user, device_id, device_keys)
             .await?;
         Ok(Json(device))

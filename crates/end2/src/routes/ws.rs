@@ -39,9 +39,12 @@ async fn send_event(
 
     history.push(counted);
 
-    if timeout(Duration::from_secs(5), ws_tx.send(Message::Text(json.into())))
-        .await
-        .is_err()
+    if timeout(
+        Duration::from_secs(5),
+        ws_tx.send(Message::Text(json.into())),
+    )
+    .await
+    .is_err()
     {
         tracing::warn!("timed out sending websocket message");
         return Err(());
@@ -54,12 +57,12 @@ async fn send_event(
 pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state: AppState) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
-    let user_tx = app_state.get_broadcaster(&user).await;
+    let user_tx = app_state.relay.get_broadcaster(&user).await;
     let mut user_rx = user_tx.subscribe();
 
     let (device_tx, mut device_rx) = mpsc::channel::<WsEvent>(32);
 
-    app_state.register_device(device_id, device_tx).await;
+    app_state.relay.register_device(device_id, device_tx).await;
 
     let mut next_counter: u64 = 0;
     let mut history: Vec<CountedEvent> = Vec::new();
@@ -137,5 +140,5 @@ pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state
         }
     }
 
-    app_state.unregister_device(device_id).await;
+    app_state.relay.unregister_device(device_id).await;
 }

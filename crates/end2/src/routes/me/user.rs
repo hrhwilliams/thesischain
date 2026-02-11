@@ -20,11 +20,12 @@ pub async fn change_nickname(
     user: User,
     Json(Nickname { nickname }): Json<Nickname>,
 ) -> Result<impl IntoResponse, ApiError> {
-    app_state.change_nickname(&user, &nickname).await?;
+    app_state.auth.change_nickname(&user, &nickname).await?;
 
-    let users_to_notify = app_state.get_known_users(&user).await?;
+    let users_to_notify = app_state.auth.get_known_users(&user).await?;
     for other in users_to_notify {
         app_state
+            .relay
             .notify_user(
                 &other,
                 WsEvent::NicknameChanged(NewNickname {

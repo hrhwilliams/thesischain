@@ -46,22 +46,20 @@ impl OAuthHandler {
     }
 
     fn build_client(&self) -> Result<ConfiguredClient, OAuthError> {
-        Ok(
-            BasicClient::new(ClientId::new(self.client_id.to_string()))
-                .set_client_secret(ClientSecret::new(self.client_secret.to_string()))
-                .set_auth_uri(
-                    AuthUrl::new(DISCORD_AUTHORIZE_URL.to_string())
-                        .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
-                )
-                .set_token_uri(
-                    TokenUrl::new(DISCORD_TOKEN_URL.to_string())
-                        .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
-                )
-                .set_redirect_uri(
-                    RedirectUrl::new(self.redirect.to_string())
-                        .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
-                ),
-        )
+        Ok(BasicClient::new(ClientId::new(self.client_id.to_string()))
+            .set_client_secret(ClientSecret::new(self.client_secret.to_string()))
+            .set_auth_uri(
+                AuthUrl::new(DISCORD_AUTHORIZE_URL.to_string())
+                    .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
+            )
+            .set_token_uri(
+                TokenUrl::new(DISCORD_TOKEN_URL.to_string())
+                    .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
+            )
+            .set_redirect_uri(
+                RedirectUrl::new(self.redirect.to_string())
+                    .map_err(|_| OAuthError::FailedToCreateAuthUrl)?,
+            ))
     }
 
     pub fn generate_oauth_url(&self) -> Result<(String, CsrfToken, PkceCodeVerifier), OAuthError> {
@@ -106,9 +104,7 @@ impl OAuthHandler {
 
         let discord_token = InboundDiscordAuthToken {
             access_token: token_response.access_token().secret().clone(),
-            refresh_token: token_response
-                .refresh_token()
-                .map(|t| t.secret().clone()),
+            refresh_token: token_response.refresh_token().map(|t| t.secret().clone()),
             expires: token_response.expires_in().map(|t| t.as_secs()),
         };
 

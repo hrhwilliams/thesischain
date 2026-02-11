@@ -9,7 +9,7 @@ pub async fn register(
     web_session: Option<WebSession>,
     Json(new_user): Json<InboundUser>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = app_state.register_user(new_user).await?;
+    let user = app_state.auth.register_user(new_user).await?;
 
     if let Some(web_session) = web_session {
         app_state

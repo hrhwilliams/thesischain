@@ -2,9 +2,12 @@ use std::num::ParseIntError;
 
 use argon2::password_hash::Encoding;
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use async_trait::async_trait;
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SelectableHelper,
+    ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,
+    r2d2::ConnectionManager,
 };
+use r2d2::Pool;
 use uuid::Uuid;
 
 use crate::schema::{channel_participant, discord_info, user};
@@ -13,10 +16,49 @@ use crate::{
     RegistrationError, User, is_valid_nickname,
 };
 
-use super::AppState;
+#[async_trait]
+pub trait AuthService: Send + Sync {
+    async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError>;
+    async fn login(&self, username: &str, password: &str) -> Result<User, LoginError>;
+    async fn login_with_discord(&self, info: &InboundDiscordInfo) -> Result<User, LoginError>;
+    async fn register_with_discord(
+        &self,
+        info: InboundDiscordInfo,
+    ) -> Result<User, RegistrationError>;
+    async fn link_account(
+        &self,
+        user: &User,
+        info: InboundDiscordInfo,
+    ) -> Result<(), RegistrationError>;
+    async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError>;
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError>;
+    async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError>;
+    async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError>;
+    async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError>;
+}
 
-impl AppState {
-    pub async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
+pub struct DbAuthService {
+    pool: Pool<ConnectionManager<PgConnection>>,
+}
+
+impl DbAuthService {
+    #[must_use]
+    pub const fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
+        Self { pool }
+    }
+
+    fn get_conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
+        self.pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))
+    }
+}
+
+#[async_trait]
+impl AuthService for DbAuthService {
+    async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let user = tokio::task::spawn_blocking(move || {
@@ -32,7 +74,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let username = username.to_string();
@@ -49,7 +91,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError> {
+    async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let user = tokio::task::spawn_blocking(move || {
@@ -66,7 +108,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self, password))]
-    pub async fn login(&self, username: &str, password: &str) -> Result<User, LoginError> {
+    async fn login(&self, username: &str, password: &str) -> Result<User, LoginError> {
         tracing::info!("logging in user");
         let user = self
             .get_user_by_username(username)
@@ -91,7 +133,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn login_with_discord(
+    async fn login_with_discord(
         &self,
         inbound_discord_info: &InboundDiscordInfo,
     ) -> Result<User, LoginError> {
@@ -107,13 +149,11 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self, inbound))]
-    pub async fn register_with_discord(
+    async fn register_with_discord(
         &self,
         inbound: InboundDiscordInfo,
     ) -> Result<User, RegistrationError> {
-        let mut conn = self
-            .get_conn()
-            .map_err(RegistrationError::InternalError)?;
+        let mut conn = self.get_conn().map_err(RegistrationError::InternalError)?;
 
         let new_user = NewUser {
             username: format!("{}@discord", inbound.username),
@@ -137,14 +177,12 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self, inbound))]
-    pub async fn link_account(
+    async fn link_account(
         &self,
         user: &User,
         inbound: InboundDiscordInfo,
     ) -> Result<(), RegistrationError> {
-        let mut conn = self
-            .get_conn()
-            .map_err(RegistrationError::InternalError)?;
+        let mut conn = self.get_conn().map_err(RegistrationError::InternalError)?;
 
         let new_discord_info = NewDiscordInfo::from_inbound(inbound, user.id)?;
 
@@ -157,12 +195,10 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self, inbound))]
-    pub async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError> {
+    async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError> {
         let new_user: NewUser = inbound.try_into()?;
 
-        let mut conn = self
-            .get_conn()
-            .map_err(RegistrationError::InternalError)?;
+        let mut conn = self.get_conn().map_err(RegistrationError::InternalError)?;
 
         let user = diesel::insert_into(user::table)
             .values(&new_user)
@@ -173,7 +209,7 @@ impl AppState {
         Ok(user)
     }
 
-    pub async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError> {
+    async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError> {
         if !is_valid_nickname(nickname) {
             return Err(AppError::UserError("bad username".to_string()));
         }
@@ -192,7 +228,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError> {
+    async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let user_id = user.id;

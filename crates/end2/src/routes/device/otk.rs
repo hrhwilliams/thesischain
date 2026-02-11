@@ -16,6 +16,7 @@ pub async fn get_otks(
     Path(device_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     let otks = app_state
+        .keys
         .get_otks(device_id)
         .await?
         .into_iter()
@@ -31,7 +32,7 @@ pub async fn upload_otks(
     Path(device_id): Path<Uuid>,
     Json(otks): Json<InboundOtks>,
 ) -> Result<impl IntoResponse, ApiError> {
-    app_state.upload_otks(&user, device_id, otks).await?;
+    app_state.keys.upload_otks(&user, device_id, otks).await?;
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 
@@ -43,9 +44,10 @@ pub async fn get_user_device_otk(
     Path((user_id, device_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let user = app_state
+        .auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    Ok(Json(app_state.get_user_otk(&user, device_id).await?))
+    Ok(Json(app_state.keys.get_user_otk(&user, device_id).await?))
 }

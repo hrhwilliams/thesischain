@@ -13,7 +13,9 @@ pub async fn get_channel_info(
     user: User,
     Path(channel_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    Ok(Json(app_state.get_channel_info(&user, channel_id).await?))
+    Ok(Json(
+        app_state.relay.get_channel_info(&user, channel_id).await?,
+    ))
 }
 
 #[tracing::instrument(skip(app_state))]
@@ -21,5 +23,5 @@ pub async fn get_all_channels(
     State(app_state): State<AppState>,
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
-    Ok(Json(app_state.get_user_channels(&user).await?))
+    Ok(Json(app_state.relay.get_user_channels(&user).await?))
 }

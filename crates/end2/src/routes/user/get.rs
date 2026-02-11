@@ -12,5 +12,5 @@ pub async fn get_user_info(
     State(app_state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    Ok(Json(app_state.get_user_info(user_id).await?))
+    Ok(Json(app_state.auth.get_user_info(user_id).await?))
 }

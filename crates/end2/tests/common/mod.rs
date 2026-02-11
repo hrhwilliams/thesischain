@@ -131,10 +131,7 @@ impl ApiClient {
             let device = Device::new(device_info.device_id);
 
             let _ = client
-                .put(format!(
-                    "{base_url}/me/device/{}",
-                    device_info.device_id
-                ))
+                .put(format!("{base_url}/me/device/{}", device_info.device_id))
                 .basic_auth(username, Some(password))
                 .json(&device.get_identity_keys())
                 .send()

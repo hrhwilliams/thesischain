@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::http::Method;
 use axum::http::header;
 use axum::middleware;
@@ -11,6 +13,7 @@ use tower_http::trace::TraceLayer;
 use crate::Api;
 use crate::AppState;
 use crate::OAuthHandler;
+use crate::services::{DbAuthService, DbKeyExchangeService, DbMessageRelayService};
 use crate::session::create_session;
 
 /// flow
@@ -38,7 +41,10 @@ pub struct App {
 impl App {
     #[must_use]
     pub fn new(oauth: OAuthHandler, pool: Pool<ConnectionManager<PgConnection>>) -> Self {
-        let app_state = AppState::new(oauth, pool);
+        let auth = Arc::new(DbAuthService::new(pool.clone()));
+        let keys = Arc::new(DbKeyExchangeService::new(pool.clone()));
+        let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
+        let app_state = AppState::new(auth, keys, relay, oauth, pool);
 
         let router = axum::Router::new()
             .nest("/api", Api::router())

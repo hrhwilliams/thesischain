@@ -22,6 +22,9 @@ pub async fn get_channel_history(
     Query(HistoryRequest { device, after }): Query<HistoryRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(
-        app_state.get_channel_history(&user, channel_id, device, after).await?,
+        app_state
+            .relay
+            .get_channel_history(&user, channel_id, device, after)
+            .await?,
     ))
 }

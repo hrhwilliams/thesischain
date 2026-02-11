@@ -13,7 +13,7 @@ pub async fn get_device(
     user: User,
     Path(device_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let device = app_state.get_device(&user, device_id).await?;
+    let device = app_state.keys.get_device(&user, device_id).await?;
     Ok(Json(device))
 }
 
@@ -25,11 +25,12 @@ pub async fn get_user_device(
     Path((user_id, device_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
+        .auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let device = app_state.get_device(&target_user, device_id).await?;
+    let device = app_state.keys.get_device(&target_user, device_id).await?;
     Ok(Json(device))
 }
 
@@ -38,7 +39,7 @@ pub async fn get_devices(
     State(app_state): State<AppState>,
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
-    let devices = app_state.get_all_devices(&user).await?;
+    let devices = app_state.keys.get_all_devices(&user).await?;
     Ok(Json(devices))
 }
 
@@ -50,10 +51,11 @@ pub async fn get_user_devices(
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
+        .auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let devices = app_state.get_all_devices(&target_user).await?;
+    let devices = app_state.keys.get_all_devices(&target_user).await?;
     Ok(Json(devices))
 }

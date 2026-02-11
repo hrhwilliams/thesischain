@@ -36,6 +36,7 @@ impl User {
                 .ok_or(ExtractError::NoUser)?;
 
             let user = app_state
+                .auth
                 .get_user_info(user_id)
                 .await
                 .map_err(ExtractError::LookupError)?
@@ -49,9 +50,9 @@ impl User {
                     ExtractError::CookieError(format!("invalid authorization header: {e}"))
                 })?
                 .split_once(' ')
-                .ok_or_else(|| ExtractError::CookieError(
-                    "invalid authorization header".to_string(),
-                ))?;
+                .ok_or_else(|| {
+                    ExtractError::CookieError("invalid authorization header".to_string())
+                })?;
 
             if auth != "Basic" {
                 return Err(ExtractError::CookieError(
@@ -71,6 +72,7 @@ impl User {
             })?;
 
             let user = app_state
+                .auth
                 .login(username, password)
                 .await
                 .map_err(|_| ExtractError::NoUser)?;

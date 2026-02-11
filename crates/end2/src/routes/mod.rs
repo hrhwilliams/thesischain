@@ -20,10 +20,7 @@ impl Api {
             .route("/auth/discord", get(auth::get_discord_oauth_url))
             .route("/auth/redirect", get(auth::discord_redirect))
             .route("/channel", post(channel::create_channel_with))
-            .route(
-                "/channel/{channel_id}",
-                get(channel::get_channel_info),
-            )
+            .route("/channel/{channel_id}", get(channel::get_channel_info))
             .route(
                 "/channel/{channel_id}/history",
                 get(channel::get_channel_history),
