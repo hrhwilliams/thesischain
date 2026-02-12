@@ -17,6 +17,7 @@ impl Api {
             .route("/auth/register", post(auth::register))
             .route("/auth/login", post(auth::login))
             .route("/auth/logout", post(auth::logout))
+            .route("/auth/attest", post(auth::attest))
             .route("/auth/discord", get(auth::get_discord_oauth_url))
             .route("/auth/redirect", get(auth::discord_redirect))
             .route("/channel", post(channel::create_channel_with))

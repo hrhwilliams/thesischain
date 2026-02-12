@@ -8,8 +8,6 @@ edition = "2024"
 [workspace.dependencies]
 base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
-client = { path = "crates/client", version = "0.0.0" }
-defs =   { path = "crates/defs",   version = "0.0.0" }
 dotenvy = "0.15.7"
 ed25519-dalek = { version = "2.2", features = ["digest", "serde"] }
 end2 = { path = "crates/end2" }

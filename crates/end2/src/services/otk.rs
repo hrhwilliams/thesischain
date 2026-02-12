@@ -11,19 +11,10 @@ use uuid::Uuid;
 use vodozemac::Curve25519PublicKey;
 
 use crate::schema::{device, one_time_key};
-use crate::{AppError, Device, InboundDevice, InboundOtks, NewDevice, NewOtk, Otk, User};
+use crate::{AppError, Device, InboundOtks, NewOtk, Otk, User};
 
 #[async_trait]
-pub trait KeyExchangeService: Send + Sync {
-    async fn new_device_for(&self, user: &User) -> Result<Device, AppError>;
-    async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError>;
-    async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError>;
-    async fn set_device_keys(
-        &self,
-        user: &User,
-        device_id: Uuid,
-        keys: InboundDevice,
-    ) -> Result<Device, AppError>;
+pub trait OtkService: Send + Sync {
     async fn get_otks(&self, device_id: Uuid) -> Result<Vec<Otk>, AppError>;
     async fn upload_otks(
         &self,
@@ -34,11 +25,11 @@ pub trait KeyExchangeService: Send + Sync {
     async fn get_user_otk(&self, user: &User, device_id: Uuid) -> Result<Otk, AppError>;
 }
 
-pub struct DbKeyExchangeService {
+pub struct DbOtkService {
     pool: Pool<ConnectionManager<PgConnection>>,
 }
 
-impl DbKeyExchangeService {
+impl DbOtkService {
     #[must_use]
     pub const fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         Self { pool }
@@ -54,78 +45,7 @@ impl DbKeyExchangeService {
 }
 
 #[async_trait]
-impl KeyExchangeService for DbKeyExchangeService {
-    #[tracing::instrument(skip(self))]
-    async fn new_device_for(&self, user: &User) -> Result<Device, AppError> {
-        let mut conn = self.get_conn()?;
-
-        let new_device = NewDevice {
-            user_id: user.id,
-            x25519: None,
-            ed25519: None,
-        };
-
-        let device = diesel::insert_into(device::table)
-            .values(&new_device)
-            .returning(Device::as_returning())
-            .get_result(&mut conn)?;
-
-        Ok(device)
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError> {
-        let mut conn = self.get_conn()?;
-        let user_id = user.id;
-
-        tracing::debug!("querying for device");
-
-        let device = tokio::task::spawn_blocking(move || {
-            device::table
-                .filter(device::id.eq(device_id).and(device::user_id.eq(user_id)))
-                .select(Device::as_select())
-                .first(&mut conn)
-        })
-        .await??;
-
-        Ok(device)
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError> {
-        let mut conn = self.get_conn()?;
-
-        device::table
-            .filter(device::user_id.eq(user.id))
-            .select(Device::as_select())
-            .load(&mut conn)
-            .map_err(AppError::from)
-    }
-
-    async fn set_device_keys(
-        &self,
-        user: &User,
-        device_id: Uuid,
-        device_keys: InboundDevice,
-    ) -> Result<Device, AppError> {
-        let mut conn = self.get_conn()?;
-        let user_id = user.id;
-        let new_device = NewDevice::from_network(user_id, &device_keys)?;
-
-        let device = tokio::task::spawn_blocking(move || {
-            diesel::update(device::table)
-                .filter(device::id.eq(device_id).and(device::user_id.eq(user_id)))
-                .set((
-                    device::x25519.eq(new_device.x25519),
-                    device::ed25519.eq(new_device.ed25519),
-                ))
-                .get_result(&mut conn)
-        })
-        .await??;
-
-        Ok(device)
-    }
-
+impl OtkService for DbOtkService {
     async fn get_otks(&self, device_id: Uuid) -> Result<Vec<Otk>, AppError> {
         let mut conn = self.get_conn()?;
 

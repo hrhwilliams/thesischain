@@ -91,6 +91,14 @@ impl Device {
         self.device_id
     }
 
+    pub fn x25519_public_key_bytes(&self) -> [u8; 32] {
+        *self.account.identity_keys().curve25519.as_bytes()
+    }
+
+    pub fn ed25519_public_key_bytes(&self) -> [u8; 32] {
+        *self.account.identity_keys().ed25519.as_bytes()
+    }
+
     pub fn get_identity_keys(&self) -> IdentityKeys {
         let keys = self.account.identity_keys();
         let message = [keys.curve25519.as_bytes() as &[u8], keys.ed25519.as_bytes()].concat();

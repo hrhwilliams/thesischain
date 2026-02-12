@@ -13,7 +13,7 @@ use tower_http::trace::TraceLayer;
 use crate::Api;
 use crate::AppState;
 use crate::OAuthHandler;
-use crate::services::{DbAuthService, DbKeyExchangeService, DbMessageRelayService};
+use crate::services::{DbAuthService, DbDeviceKeyService, DbMessageRelayService, DbOtkService};
 use crate::session::create_session;
 
 /// flow
@@ -42,10 +42,15 @@ impl App {
     #[must_use]
     pub fn new(oauth: OAuthHandler, pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         let auth = Arc::new(DbAuthService::new(pool.clone()));
-        let keys = Arc::new(DbKeyExchangeService::new(pool.clone()));
+        let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone()));
+        let otks = Arc::new(DbOtkService::new(pool.clone()));
         let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-        let app_state = AppState::new(auth, keys, relay, oauth, pool);
+        let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
+        Self::from_state(app_state)
+    }
 
+    #[must_use]
+    pub fn from_state(app_state: AppState) -> Self {
         let router = axum::Router::new()
             .nest("/api", Api::router())
             .layer(middleware::from_fn_with_state(

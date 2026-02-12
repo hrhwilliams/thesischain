@@ -1,25 +1,49 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::Arc;
 
 use anyhow::Result;
 use diesel::{PgConnection, r2d2::ConnectionManager};
-use end2::{App, OAuthHandler};
+use ed25519_dalek::SigningKey;
+use diesel::{ExpressionMethods, RunQueryDsl};
+use end2::{
+    App, AppState, AuthService, ChainDeviceKeyService, DbAuthService, DbMessageRelayService,
+    DbOtkService, InboundUser, OAuthHandler,
+};
+use miner::http::MinerApi;
+use miner::network::Node;
+use miner::{Chain, GenesisDevice, create_genesis};
+use rand_core::OsRng;
 use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 use vodozemac::{Curve25519PublicKey, olm::Session};
 
 use device::{DecryptedMessage, Device, DeviceInfo, InboundChatMessage, MessagePayload, Otk};
 
-mod device;
+/// Backend attestation key used across chain-backed test environments.
+pub struct BackendKeys {
+    pub signing_key: SigningKey,
+    pub verifying_key: ed25519_dalek::VerifyingKey,
+}
 
-static PORT_COUNTER: AtomicU16 = AtomicU16::new(9000);
+pub mod device;
 
-/// Spawns the app on a random port and returns the port number.
+/// Bind to port 0 and return the listener + the OS-assigned port.
+async fn random_listener() -> (TcpListener, u16) {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("TcpListener bind to port 0");
+    let port = listener.local_addr().expect("local_addr").port();
+    (listener, port)
+}
+
+/// Spawns the app on an OS-assigned port and returns the port number.
 pub async fn spawn_app() -> u16 {
-    let port = PORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let (listener, port) = random_listener().await;
 
     let oauth = OAuthHandler::new(String::new(), String::new(), String::new());
 
@@ -30,13 +54,319 @@ pub async fn spawn_app() -> u16 {
         .expect("Failed to connect to Postgres");
 
     let app = App::new(oauth, pool);
-    let listener = TcpListener::bind(("localhost", port))
-        .await
-        .expect("TcpListener");
-
     tokio::spawn(async move { app.run(listener).await });
 
     port
+}
+
+pub struct ChainTestUser {
+    pub username: String,
+    pub password: String,
+    pub user_id: Uuid,
+    pub device: Device,
+    pub chain_signing_key: SigningKey,
+}
+
+/// Result of spawning the chain-backed test environment.
+pub struct ChainTestEnv {
+    pub backend_port: u16,
+    pub miner_port: u16,
+    pub test_users: Vec<ChainTestUser>,
+    pub backend_keys: BackendKeys,
+}
+
+/// Spawns a miner HTTP API + backend with `ChainDeviceKeyService`.
+///
+/// Genesis contains only a bootstrap authority. Users must register their
+/// devices on-chain via the miner HTTP API (POST /tx + POST /mine).
+pub async fn spawn_app_with_chain() -> ChainTestEnv {
+    let (backend_listener, backend_port) = random_listener().await;
+    let (miner_listener, miner_port) = random_listener().await;
+
+    let oauth = OAuthHandler::new(String::new(), String::new(), String::new());
+
+    let database_url = "postgres://postgres@localhost/postgres".to_string();
+    let manager = ConnectionManager::<PgConnection>::new(&database_url);
+    let pool = r2d2::Pool::builder()
+        .build(manager)
+        .expect("Failed to connect to Postgres");
+
+    // Phase 1: Register users in DB to get their user_ids
+    let auth = Arc::new(DbAuthService::new(pool.clone()));
+
+    let id = Uuid::now_v7().simple().to_string();
+    let suffix = &id[..16];
+    let users_to_create = vec![
+        (format!("a{suffix}1"), "pass"),
+        (format!("a{suffix}2"), "pass"),
+    ];
+
+    let mut test_users = Vec::new();
+
+    for (username, password) in &users_to_create {
+        let user = auth
+            .register_user(InboundUser {
+                username: username.clone(),
+                password: password.to_string(),
+                confirm_password: password.to_string(),
+            })
+            .await
+            .expect("Failed to register test user");
+
+        let device_id = Uuid::now_v7();
+        let device = Device::new(device_id);
+        let chain_signing_key = SigningKey::generate(&mut OsRng);
+
+        test_users.push(ChainTestUser {
+            username: username.clone(),
+            password: password.to_string(),
+            user_id: user.id,
+            device,
+            chain_signing_key,
+        });
+    }
+
+    // Phase 2: Insert device records into DB (needed for OTK foreign keys + signature verification)
+    {
+        let mut conn = pool.get().expect("Failed to get DB connection");
+        for tu in &test_users {
+            diesel::insert_into(end2::device::table)
+                .values((
+                    end2::device::id.eq(tu.device.id()),
+                    end2::device::user_id.eq(tu.user_id),
+                    end2::device::ed25519.eq(Some(tu.device.ed25519_public_key_bytes().to_vec())),
+                    end2::device::x25519.eq(Some(tu.device.x25519_public_key_bytes().to_vec())),
+                ))
+                .execute(&mut conn)
+                .expect("Failed to insert device into DB");
+        }
+    }
+
+    // Phase 3: Generate backend attestation key pair
+    let backend_signing_key = SigningKey::generate(&mut OsRng);
+    let backend_verifying_key = backend_signing_key.verifying_key();
+
+    // Phase 4: Create genesis with a bootstrap authority only (no user devices).
+    let bootstrap_key = SigningKey::generate(&mut OsRng);
+    let bootstrap_device = GenesisDevice {
+        user_id: Uuid::now_v7(),
+        device_id: Uuid::now_v7(),
+        signing_key: bootstrap_key.clone(),
+        x25519: [0u8; 32], // placeholder — bootstrap device is just for block signing
+    };
+
+    let genesis = create_genesis(&bootstrap_key, 1, &[bootstrap_device], None)
+        .expect("Failed to create genesis block");
+    let chain = Chain::new(genesis, Some(backend_verifying_key))
+        .expect("Failed to create chain");
+    let chain = Arc::new(RwLock::new(chain));
+
+    // Phase 5: Start miner HTTP API (shares chain)
+    let miner_api = MinerApi::new(Arc::clone(&chain), bootstrap_key, Some(backend_verifying_key));
+    tokio::spawn(async move { miner_api.run(miner_listener).await });
+
+    // Phase 6: Start backend with ChainDeviceKeyService (shares same chain)
+    let device_keys = Arc::new(ChainDeviceKeyService::new(Arc::clone(&chain)));
+    let otks = Arc::new(DbOtkService::new(pool.clone()));
+    let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
+    let mut app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
+    app_state.attestation_key = Some(Arc::new(backend_signing_key.clone()));
+
+    let app = App::from_state(app_state);
+    tokio::spawn(async move { app.run(backend_listener).await });
+
+    let backend_keys = BackendKeys {
+        signing_key: backend_signing_key,
+        verifying_key: backend_verifying_key,
+    };
+
+    ChainTestEnv {
+        backend_port,
+        miner_port,
+        test_users,
+        backend_keys,
+    }
+}
+
+/// Result of spawning a multi-miner P2P test environment.
+pub struct MultiMinerEnv {
+    pub backend_port: u16,
+    pub miner_ports: Vec<u16>,
+    pub test_users: Vec<ChainTestUser>,
+    pub backend_keys: BackendKeys,
+}
+
+/// Spawns `n` P2P miner nodes + 1 backend.
+///
+/// Each miner gets its own `Chain` (from the same genesis), `Node`, and HTTP API
+/// in integrated mode (txs forwarded to node via channel, no `/mine` endpoint).
+/// mDNS handles peer discovery automatically on localhost.
+pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
+    let (backend_listener, backend_port) = random_listener().await;
+
+    let oauth = OAuthHandler::new(String::new(), String::new(), String::new());
+
+    let database_url = "postgres://postgres@localhost/postgres".to_string();
+    let manager = ConnectionManager::<PgConnection>::new(&database_url);
+    let pool = r2d2::Pool::builder()
+        .build(manager)
+        .expect("Failed to connect to Postgres");
+
+    // Phase 1: Generate backend attestation key pair
+    let backend_signing_key = SigningKey::generate(&mut OsRng);
+    let backend_verifying_key = backend_signing_key.verifying_key();
+
+    // Phase 2: Create n miner signing keys as genesis devices (each becomes an authority)
+    let mut miner_keys = Vec::with_capacity(n);
+    let mut genesis_devices = Vec::with_capacity(n);
+    for _ in 0..n {
+        let key = SigningKey::generate(&mut OsRng);
+        genesis_devices.push(GenesisDevice {
+            user_id: Uuid::now_v7(),
+            device_id: Uuid::now_v7(),
+            signing_key: key.clone(),
+            x25519: [0u8; 32],
+        });
+        miner_keys.push(key);
+    }
+
+    let genesis = create_genesis(
+        &miner_keys[0],
+        1,
+        &genesis_devices,
+        Some(&backend_signing_key),
+    )
+    .expect("Failed to create genesis block");
+
+    // Phase 3: Create each miner node, resolve listen addresses, and connect them
+    let mut miner_ports = Vec::with_capacity(n);
+    let mut first_chain = None;
+    let mut nodes = Vec::with_capacity(n);
+    let mut node_addrs = Vec::with_capacity(n);
+
+    for (i, key) in miner_keys.into_iter().enumerate() {
+        let chain = Chain::new(genesis.clone(), Some(backend_verifying_key))
+            .expect("Failed to create chain");
+        let chain = Arc::new(RwLock::new(chain));
+
+        if i == 0 {
+            first_chain = Some(Arc::clone(&chain));
+        }
+
+        let (mut node, tx_sender) =
+            Node::new(Arc::clone(&chain), key).expect("Failed to create node");
+        node.listen("/ip4/127.0.0.1/tcp/0")
+            .expect("Failed to listen");
+
+        // Wait for the swarm to resolve the actual listen address
+        let addr = node.wait_for_listen_addr().await;
+        let peer_id = node.peer_id();
+
+        let miner_api =
+            MinerApi::integrated(Arc::clone(&chain), tx_sender, Some(backend_verifying_key));
+        let (http_listener, http_port) = random_listener().await;
+        miner_ports.push(http_port);
+
+        node_addrs.push((peer_id, addr));
+        nodes.push((node, miner_api, http_listener));
+    }
+
+    // Manually connect all nodes to each other (full mesh)
+    for i in 0..nodes.len() {
+        for j in 0..node_addrs.len() {
+            if i != j {
+                let (_, ref addr) = node_addrs[j];
+                nodes[i]
+                    .0
+                    .dial(addr.clone())
+                    .expect("Failed to dial peer");
+                nodes[i].0.add_explicit_peer(&node_addrs[j].0);
+            }
+        }
+    }
+
+    // Spawn all nodes
+    for (mut node, miner_api, http_listener) in nodes {
+        tokio::spawn(async move { node.run(Duration::from_millis(500)).await });
+        tokio::spawn(async move { miner_api.run(http_listener).await });
+    }
+
+    // Phase 4: Register test users in DB
+    let auth = Arc::new(DbAuthService::new(pool.clone()));
+
+    let id = Uuid::now_v7().simple().to_string();
+    let suffix = &id[..16];
+    let users_to_create = vec![
+        (format!("a{suffix}1"), "pass"),
+        (format!("a{suffix}2"), "pass"),
+    ];
+
+    let mut test_users = Vec::new();
+
+    for (username, password) in &users_to_create {
+        let user = auth
+            .register_user(InboundUser {
+                username: username.clone(),
+                password: password.to_string(),
+                confirm_password: password.to_string(),
+            })
+            .await
+            .expect("Failed to register test user");
+
+        let device_id = Uuid::now_v7();
+        let device = Device::new(device_id);
+        let chain_signing_key = SigningKey::generate(&mut OsRng);
+
+        test_users.push(ChainTestUser {
+            username: username.clone(),
+            password: password.to_string(),
+            user_id: user.id,
+            device,
+            chain_signing_key,
+        });
+    }
+
+    // Insert device records into DB
+    {
+        let mut conn = pool.get().expect("Failed to get DB connection");
+        for tu in &test_users {
+            diesel::insert_into(end2::device::table)
+                .values((
+                    end2::device::id.eq(tu.device.id()),
+                    end2::device::user_id.eq(tu.user_id),
+                    end2::device::ed25519.eq(Some(tu.device.ed25519_public_key_bytes().to_vec())),
+                    end2::device::x25519.eq(Some(tu.device.x25519_public_key_bytes().to_vec())),
+                ))
+                .execute(&mut conn)
+                .expect("Failed to insert device into DB");
+        }
+    }
+
+    // Phase 5: Start backend with ChainDeviceKeyService pointing to miner 0's chain
+    let chain_for_backend = first_chain.expect("at least one miner");
+    let device_keys = Arc::new(ChainDeviceKeyService::new(chain_for_backend));
+    let otks = Arc::new(DbOtkService::new(pool.clone()));
+    let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
+    let mut app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
+    app_state.attestation_key = Some(Arc::new(backend_signing_key.clone()));
+
+    let app = App::from_state(app_state);
+    tokio::spawn(async move { app.run(backend_listener).await });
+
+    // Phase 6: Wait for gossipsub mesh to establish (nodes are manually connected)
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let backend_keys = BackendKeys {
+        signing_key: backend_signing_key,
+        verifying_key: backend_verifying_key,
+    };
+
+    MultiMinerEnv {
+        backend_port,
+        miner_ports,
+        test_users,
+        backend_keys,
+    }
 }
 
 #[derive(Deserialize)]
@@ -81,6 +411,27 @@ pub struct ApiClient {
 impl ApiClient {
     pub async fn new(username: &str, password: &str, device: Option<Device>) -> Result<Self> {
         Self::with_port(username, password, device, 8081).await
+    }
+
+    /// Create a client for a user that was already registered directly (e.g. via DbAuthService).
+    /// Skips register/login HTTP calls — uses basic auth for all subsequent requests.
+    pub fn preconfigured(
+        username: &str,
+        password: &str,
+        user_id: Uuid,
+        device: Device,
+        port: u16,
+    ) -> Self {
+        Self {
+            client: Client::new(),
+            device,
+            sessions: HashMap::new(),
+            histories: HashMap::new(),
+            user_id,
+            username: username.to_string(),
+            password: password.to_string(),
+            base_url: format!("http://localhost:{port}/api"),
+        }
     }
 
     pub async fn with_port(
