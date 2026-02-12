@@ -88,4 +88,6 @@ async function onSubmit() {
             :detail="error.detail">
         </ErrorMessage>
     </div>
+    <h3>Backend version</h3>
+    <code>7bb8925435d40b1010e028c2c62ede32a8c8effd</code>
 </template>

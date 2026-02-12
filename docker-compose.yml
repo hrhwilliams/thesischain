@@ -41,7 +41,8 @@ services:
 
   backend:
     build:
-      context: ./crates/end2
+      context: .
+      dockerfile: crates/end2/Dockerfile
     env_file:
       - .env
     environment:
