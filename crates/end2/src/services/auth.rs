@@ -8,12 +8,11 @@ use diesel::{
     r2d2::ConnectionManager,
 };
 use r2d2::Pool;
-use uuid::Uuid;
 
 use crate::schema::{channel_participant, discord_info, user};
 use crate::{
-    AppError, InboundDiscordInfo, InboundUser, LoginError, NewDiscordInfo, NewUser,
-    RegistrationError, User, is_valid_nickname,
+    AppError, ChannelId, InboundDiscordInfo, InboundUser, LoginError, NewDiscordInfo, NewUser,
+    RegistrationError, User, UserId, is_valid_nickname,
 };
 
 #[async_trait]
@@ -30,7 +29,7 @@ pub trait AuthService: Send + Sync {
         user: &User,
         info: InboundDiscordInfo,
     ) -> Result<(), RegistrationError>;
-    async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError>;
+    async fn get_user_info(&self, user_id: UserId) -> Result<Option<User>, AppError>;
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError>;
     async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError>;
     async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError>;
@@ -58,7 +57,7 @@ impl DbAuthService {
 
 #[async_trait]
 impl AuthService for DbAuthService {
-    async fn get_user_info(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
+    async fn get_user_info(&self, user_id: UserId) -> Result<Option<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let user = tokio::task::spawn_blocking(move || {
@@ -236,7 +235,7 @@ impl AuthService for DbAuthService {
             let channel_ids = channel_participant::table
                 .filter(channel_participant::user_id.eq(user_id))
                 .select(channel_participant::channel_id)
-                .load::<Uuid>(&mut conn)?;
+                .load::<ChannelId>(&mut conn)?;
 
             channel_participant::table
                 .inner_join(user::table)

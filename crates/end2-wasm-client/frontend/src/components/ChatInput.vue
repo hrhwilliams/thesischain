@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, toRef } from 'vue';
-import { useChannelStore } from '../stores/channel';
+import { ref, toRef } from 'vue';
 import { useMessageStore } from '../stores/message';
 
 const props = defineProps({
@@ -9,7 +8,6 @@ const props = defineProps({
 const channel_id = toRef(props, 'channel_id')
 const message_input = ref('');
 
-const channelStore = useChannelStore()
 const messageStore = useMessageStore()
 
 async function send_message() {
@@ -26,10 +24,6 @@ async function send_message() {
 
     message_input.value = ''
 }
-
-onMounted(() => {
-    channelStore.fetchChannel(channel_id.value)
-})
 </script>
 
 <template>

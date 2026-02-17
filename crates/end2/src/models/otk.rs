@@ -1,6 +1,6 @@
 use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use crate::{DeviceId, OtkId};
 
 use crate::util::serialize_as_base64;
 
@@ -8,8 +8,8 @@ use crate::util::serialize_as_base64;
 #[diesel(table_name = crate::schema::one_time_key)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Otk {
-    pub id: Uuid,
-    pub device_id: Uuid,
+    pub id: OtkId,
+    pub device_id: DeviceId,
     #[serde(serialize_with = "serialize_as_base64")]
     pub otk: Vec<u8>,
 }
@@ -18,7 +18,7 @@ pub struct Otk {
 #[diesel(table_name = crate::schema::one_time_key)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewOtk {
-    pub device_id: Uuid,
+    pub device_id: DeviceId,
     pub otk: [u8; 32],
 }
 

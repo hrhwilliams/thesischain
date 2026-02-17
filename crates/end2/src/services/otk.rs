@@ -7,22 +7,21 @@ use diesel::{
 };
 use ed25519_dalek::Signature;
 use r2d2::Pool;
-use uuid::Uuid;
 use vodozemac::Curve25519PublicKey;
 
 use crate::schema::{device, one_time_key};
-use crate::{AppError, Device, InboundOtks, NewOtk, Otk, User};
+use crate::{AppError, Device, DeviceId, InboundOtks, NewOtk, Otk, User};
 
 #[async_trait]
 pub trait OtkService: Send + Sync {
-    async fn get_otks(&self, device_id: Uuid) -> Result<Vec<Otk>, AppError>;
+    async fn get_otks(&self, device_id: DeviceId) -> Result<Vec<Otk>, AppError>;
     async fn upload_otks(
         &self,
         user: &User,
-        device_id: Uuid,
+        device_id: DeviceId,
         otks: InboundOtks,
     ) -> Result<(), AppError>;
-    async fn get_user_otk(&self, user: &User, device_id: Uuid) -> Result<Otk, AppError>;
+    async fn get_user_otk(&self, user: &User, device_id: DeviceId) -> Result<Otk, AppError>;
 }
 
 pub struct DbOtkService {
@@ -46,7 +45,7 @@ impl DbOtkService {
 
 #[async_trait]
 impl OtkService for DbOtkService {
-    async fn get_otks(&self, device_id: Uuid) -> Result<Vec<Otk>, AppError> {
+    async fn get_otks(&self, device_id: DeviceId) -> Result<Vec<Otk>, AppError> {
         let mut conn = self.get_conn()?;
 
         let otks = tokio::task::spawn_blocking(move || {
@@ -64,7 +63,7 @@ impl OtkService for DbOtkService {
     async fn upload_otks(
         &self,
         user: &User,
-        device_id: Uuid,
+        device_id: DeviceId,
         otks: InboundOtks,
     ) -> Result<(), AppError> {
         let mut conn = self.get_conn()?;
@@ -159,7 +158,7 @@ impl OtkService for DbOtkService {
         Ok(())
     }
 
-    async fn get_user_otk(&self, user: &User, device_id: Uuid) -> Result<Otk, AppError> {
+    async fn get_user_otk(&self, user: &User, device_id: DeviceId) -> Result<Otk, AppError> {
         let mut conn = self.get_conn()?;
         let user_id = user.id;
 

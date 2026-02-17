@@ -1,7 +1,5 @@
 use axum::{Json, extract::State, response::IntoResponse};
-use uuid::Uuid;
-
-use crate::{ApiError, AppState, User, WebSession};
+use crate::{ApiError, AppState, UserId, User, WebSession};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn logout(
@@ -10,7 +8,7 @@ pub async fn logout(
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
     app_state
-        .remove_from_session::<Uuid>(web_session, "user_id")
+        .remove_from_session::<UserId>(web_session, "user_id")
         .await?;
 
     Ok(Json(serde_json::json!({ "status": "success" })))

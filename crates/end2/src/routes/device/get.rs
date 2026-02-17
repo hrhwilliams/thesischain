@@ -3,15 +3,13 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use uuid::Uuid;
-
-use crate::{ApiError, AppError, AppState, User};
+use crate::{ApiError, AppError, AppState, DeviceId, UserId, User};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_device(
     State(app_state): State<AppState>,
     user: User,
-    Path(device_id): Path<Uuid>,
+    Path(device_id): Path<DeviceId>,
 ) -> Result<impl IntoResponse, ApiError> {
     let device = app_state.device_keys.get_device(&user, device_id).await?;
     Ok(Json(device))
@@ -22,7 +20,7 @@ pub async fn get_device(
 pub async fn get_user_device(
     State(app_state): State<AppState>,
     _user: User,
-    Path((user_id, device_id)): Path<(Uuid, Uuid)>,
+    Path((user_id, device_id)): Path<(UserId, DeviceId)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
         .auth
@@ -51,7 +49,7 @@ pub async fn get_devices(
 pub async fn get_user_devices(
     State(app_state): State<AppState>,
     _user: User,
-    Path(user_id): Path<Uuid>,
+    Path(user_id): Path<UserId>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
         .auth

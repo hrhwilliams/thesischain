@@ -5,6 +5,7 @@ use axum::http::header;
 use axum::middleware;
 use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
+use ed25519_dalek::SigningKey;
 use r2d2::Pool;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
@@ -40,12 +41,16 @@ pub struct App {
 
 impl App {
     #[must_use]
-    pub fn new(oauth: OAuthHandler, pool: Pool<ConnectionManager<PgConnection>>) -> Self {
+    pub fn new(
+        oauth: OAuthHandler,
+        pool: Pool<ConnectionManager<PgConnection>>,
+        signing_key: SigningKey,
+    ) -> Self {
         let auth = Arc::new(DbAuthService::new(pool.clone()));
         let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone()));
         let otks = Arc::new(DbOtkService::new(pool.clone()));
         let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-        let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
+        let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, signing_key);
         Self::from_state(app_state)
     }
 

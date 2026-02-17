@@ -1,14 +1,10 @@
-#![allow(
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::unwrap_used,
-    dead_code,
-)]
+#![allow(clippy::pedantic, clippy::nursery, clippy::unwrap_used, dead_code)]
 
 mod common;
 
 use anyhow::Result;
 use common::{ApiClient, spawn_app, spawn_app_with_chain, spawn_app_with_miners};
+use end2::DeviceId;
 use miner::{IdentityAttestation, Transaction, sign_attestation, sign_transaction};
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -109,7 +105,7 @@ async fn test_unauthorized_channel_access() -> Result<()> {
         .raw_get(&format!(
             "/channel/{}/history?device={}",
             channel_id,
-            uuid::Uuid::nil()
+            DeviceId::from(uuid::Uuid::nil())
         ))
         .await?;
 
@@ -181,7 +177,7 @@ async fn test_chain_backed_e2ee() -> Result<()> {
         let attest_resp = http
             .post(format!("{backend_url}/auth/attest"))
             .basic_auth(&tu.username, Some(&tu.password))
-            .json(&serde_json::json!({ "device_id": tu.device.id() }))
+            .json(&serde_json::json!({ "device_id": DeviceId::from(tu.device.id()) }))
             .send()
             .await?;
         assert_eq!(
@@ -198,7 +194,7 @@ async fn test_chain_backed_e2ee() -> Result<()> {
 
         let tx = sign_transaction(
             Transaction::RegisterDevice {
-                user_id: tu.user_id,
+                user_id: tu.user_id.into_inner(),
                 device_id: tu.device.id(),
                 ed25519: tu.chain_signing_key.verifying_key().to_bytes(),
                 x25519: tu.device.x25519_public_key_bytes(),
@@ -214,14 +210,15 @@ async fn test_chain_backed_e2ee() -> Result<()> {
             .json(&tx)
             .send()
             .await?;
-        assert_eq!(resp.status(), StatusCode::ACCEPTED, "submit tx for user {i}");
+        assert_eq!(
+            resp.status(),
+            StatusCode::ACCEPTED,
+            "submit tx for user {i}"
+        );
     }
 
     // Phase 2: Trigger block production — miner mines a block with the pending txs
-    let resp = http
-        .post(format!("{miner_url}/mine"))
-        .send()
-        .await?;
+    let resp = http.post(format!("{miner_url}/mine")).send().await?;
     assert_eq!(resp.status(), StatusCode::OK, "mine block");
 
     // Verify devices are now on-chain
@@ -230,7 +227,12 @@ async fn test_chain_backed_e2ee() -> Result<()> {
             .get(format!("{miner_url}/device/{}", tu.device.id()))
             .send()
             .await?;
-        assert_eq!(resp.status(), StatusCode::OK, "device {} on chain", tu.device.id());
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "device {} on chain",
+            tu.device.id()
+        );
     }
 
     // Phase 3: Standard E2EE flow through the backend (which reads keys from chain)
@@ -240,10 +242,18 @@ async fn test_chain_backed_e2ee() -> Result<()> {
     let user2_username = user2.username.clone();
 
     let mut client1 = ApiClient::preconfigured(
-        &user1.username, &user1.password, user1.user_id, user1.device, env.backend_port,
+        &user1.username,
+        &user1.password,
+        user1.user_id,
+        user1.device,
+        env.backend_port,
     );
     let mut client2 = ApiClient::preconfigured(
-        &user2.username, &user2.password, user2.user_id, user2.device, env.backend_port,
+        &user2.username,
+        &user2.password,
+        user2.user_id,
+        user2.device,
+        env.backend_port,
     );
 
     // OTKs are still DB-backed
@@ -269,9 +279,7 @@ async fn test_chain_backed_e2ee() -> Result<()> {
     assert_eq!(history[0].plaintext, "hello from chain");
 
     // Client 2 responds
-    client2
-        .send_message(&channel1_info, "chain reply")
-        .await?;
+    client2.send_message(&channel1_info, "chain reply").await?;
 
     let history = client1.get_history(channel1_id.channel_id).await?;
     assert_eq!(history.len(), 1);
@@ -292,17 +300,12 @@ async fn test_register_without_attestation_rejected() -> Result<()> {
 
     // Create a fake attestation signed by a random key (not the backend key)
     let fake_key = ed25519_dalek::SigningKey::generate(&mut rand_core::OsRng);
-    let fake_attestation = sign_attestation(
-        tu.user_id,
-        tu.device.id(),
-        0,
-        &fake_key,
-    )
-    .expect("sign fake attestation");
+    let fake_attestation =
+        sign_attestation(tu.user_id.into_inner(), tu.device.id(), 0, &fake_key).expect("sign fake attestation");
 
     let tx = sign_transaction(
         Transaction::RegisterDevice {
-            user_id: tu.user_id,
+            user_id: tu.user_id.into_inner(),
             device_id: tu.device.id(),
             ed25519: tu.chain_signing_key.verifying_key().to_bytes(),
             x25519: tu.device.x25519_public_key_bytes(),
@@ -342,7 +345,7 @@ async fn test_3_miner_consensus() -> Result<()> {
         let attest_resp = http
             .post(format!("{backend_url}/auth/attest"))
             .basic_auth(&tu.username, Some(&tu.password))
-            .json(&serde_json::json!({ "device_id": tu.device.id() }))
+            .json(&serde_json::json!({ "device_id": DeviceId::from(tu.device.id()) }))
             .send()
             .await?;
         assert_eq!(
@@ -359,7 +362,7 @@ async fn test_3_miner_consensus() -> Result<()> {
 
         let tx = sign_transaction(
             Transaction::RegisterDevice {
-                user_id: tu.user_id,
+                user_id: tu.user_id.into_inner(),
                 device_id: tu.device.id(),
                 ed25519: tu.chain_signing_key.verifying_key().to_bytes(),
                 x25519: tu.device.x25519_public_key_bytes(),
@@ -383,7 +386,8 @@ async fn test_3_miner_consensus() -> Result<()> {
         assert_eq!(
             resp.status(),
             StatusCode::ACCEPTED,
-            "submit tx for user {i} to miner {}", i % env.miner_ports.len()
+            "submit tx for user {i} to miner {}",
+            i % env.miner_ports.len()
         );
     }
 
@@ -418,6 +422,9 @@ async fn test_3_miner_consensus() -> Result<()> {
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
+
+    // this should directly query for devices from miners, not the backend
+    // or at the very least it should come with a signature from the miner
 
     // Phase 4: E2EE messaging through backend (reads keys from miner 0's chain)
     let mut test_users = env.test_users;

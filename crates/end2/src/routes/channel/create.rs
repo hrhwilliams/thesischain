@@ -4,10 +4,8 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
-use uuid::Uuid;
-
 use crate::{
-    ApiError, AppError, AppState, InboundChatMessage, MessageId, OutboundChatMessage, User, WsEvent,
+    ApiError, AppError, AppState, ChannelId, InboundChatMessage, MessageReceipt, OutboundChatMessage, User, WsEvent,
 };
 
 #[derive(Deserialize)]
@@ -48,7 +46,7 @@ pub async fn create_channel_with(
 pub async fn send_message(
     State(app_state): State<AppState>,
     user: User,
-    Path(channel_id): Path<Uuid>,
+    Path(channel_id): Path<ChannelId>,
     Json(message): Json<InboundChatMessage>,
 ) -> Result<impl IntoResponse, ApiError> {
     if channel_id != message.channel_id {
@@ -85,7 +83,7 @@ pub async fn send_message(
         .await
     {
         let _ = sender
-            .send(WsEvent::MessageReceived(MessageId {
+            .send(WsEvent::MessageReceived(MessageReceipt {
                 message_id: saved_message.id,
                 channel_id: saved_message.channel_id,
                 timestamp: saved_message.created,

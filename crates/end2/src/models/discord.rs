@@ -3,16 +3,15 @@ use std::num::ParseIntError;
 use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
-use crate::RegistrationError;
+use crate::{DiscordAuthTokenId, DiscordInfoId, RegistrationError, UserId};
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::schema::discord_info)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DiscordInfo {
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: DiscordInfoId,
+    pub user_id: UserId,
     pub discord_id: i64,
     pub discord_username: String,
     pub global_name: Option<String>,
@@ -23,7 +22,7 @@ pub struct DiscordInfo {
 #[diesel(table_name = crate::schema::discord_info)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewDiscordInfo {
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub discord_id: i64,
     pub discord_username: String,
     pub global_name: Option<String>,
@@ -41,7 +40,7 @@ pub struct InboundDiscordInfo {
 impl NewDiscordInfo {
     pub fn from_inbound(
         inbound: InboundDiscordInfo,
-        user_id: Uuid,
+        user_id: UserId,
     ) -> Result<Self, RegistrationError> {
         Ok(Self {
             user_id,
@@ -60,8 +59,8 @@ impl NewDiscordInfo {
 #[diesel(table_name = crate::schema::discord_auth_token)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DiscordAuthToken {
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: DiscordAuthTokenId,
+    pub user_id: UserId,
     pub access_token: Vec<u8>,
     pub refresh_token: Option<Vec<u8>>,
     pub expires: Option<OffsetDateTime>,
@@ -71,7 +70,7 @@ pub struct DiscordAuthToken {
 #[diesel(table_name = crate::schema::discord_auth_token)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewDiscordAuthToken {
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub access_token: Vec<u8>,
     pub refresh_token: Option<Vec<u8>>,
     pub expires: Option<OffsetDateTime>,

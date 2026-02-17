@@ -2,7 +2,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, Select
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use uuid::Uuid;
+use crate::SessionId;
 
 use crate::schema::web_session;
 use crate::{AppError, WebSession};
@@ -26,7 +26,7 @@ impl AppState {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_session(&self, session_id: Uuid) -> Result<Option<WebSession>, AppError> {
+    pub async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError> {
         let mut conn = self.get_conn()?;
 
         let session = tokio::task::spawn_blocking(move || {

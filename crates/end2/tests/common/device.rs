@@ -1,4 +1,5 @@
 use anyhow::Result;
+use end2::{ChannelId, DeviceId, MessageId, UserId};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -24,7 +25,7 @@ pub struct UploadOtks {
 
 #[derive(Deserialize)]
 pub struct Otk {
-    pub id: Uuid,
+    pub id: String,
     pub device_id: String,
     pub otk: String,
 }
@@ -39,24 +40,24 @@ pub struct Otks2 {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DeviceInfo {
-    pub device_id: Uuid,
-    pub user_id: Uuid,
+    pub device_id: DeviceId,
+    pub user_id: UserId,
     pub x25519: Option<String>,
     pub ed25519: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct MessagePayload {
-    pub recipient_device_id: Uuid,
+    pub recipient_device_id: DeviceId,
     pub ciphertext: String,
     pub is_pre_key: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DecryptedMessage {
-    pub message_id: Uuid,
-    pub channel_id: Uuid,
-    pub author_id: Uuid,
+    pub message_id: MessageId,
+    pub channel_id: ChannelId,
+    pub author_id: UserId,
     pub plaintext: String,
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
@@ -64,10 +65,10 @@ pub struct DecryptedMessage {
 
 #[derive(Debug, Deserialize)]
 pub struct InboundChatMessage {
-    pub message_id: Uuid,
-    pub device_id: Uuid,
-    pub channel_id: Uuid,
-    pub author_id: Uuid,
+    pub message_id: MessageId,
+    pub device_id: DeviceId,
+    pub channel_id: ChannelId,
+    pub author_id: UserId,
     pub ciphertext: String,
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,

@@ -3,9 +3,7 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use uuid::Uuid;
-
-use crate::{ApiError, AppError, AppState, InboundDevice, User};
+use crate::{ApiError, AppError, AppState, DeviceId, InboundDevice, User};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn new_device(
@@ -20,7 +18,7 @@ pub async fn new_device(
 pub async fn upload_keys(
     State(app_state): State<AppState>,
     user: User,
-    Path(device_id): Path<Uuid>,
+    Path(device_id): Path<DeviceId>,
     Json(device_keys): Json<InboundDevice>,
 ) -> Result<impl IntoResponse, ApiError> {
     let device = app_state

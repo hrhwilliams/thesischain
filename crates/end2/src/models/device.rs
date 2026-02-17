@@ -1,18 +1,17 @@
 use diesel::{Insertable, Queryable, Selectable};
 use ed25519_dalek::Signature;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use vodozemac::{Curve25519PublicKey, Ed25519PublicKey, Ed25519Signature};
 
-use crate::{AppError, serialize_as_base64_opt};
+use crate::{AppError, DeviceId, UserId, serialize_as_base64_opt};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::device)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Device {
     #[serde(rename(serialize = "device_id"))]
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: DeviceId,
+    pub user_id: UserId,
     #[serde(serialize_with = "serialize_as_base64_opt")]
     pub ed25519: Option<Vec<u8>>,
     #[serde(serialize_with = "serialize_as_base64_opt")]
@@ -23,21 +22,21 @@ pub struct Device {
 #[diesel(table_name = crate::schema::device)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewDevice {
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub ed25519: Option<Vec<u8>>,
     pub x25519: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct InboundDevice {
-    pub device_id: Option<Uuid>,
+    pub device_id: Option<DeviceId>,
     pub ed25519: String,
     pub x25519: String,
     pub signature: String,
 }
 
 impl NewDevice {
-    pub fn from_network(user_id: Uuid, device: &InboundDevice) -> Result<Self, AppError> {
+    pub fn from_network(user_id: UserId, device: &InboundDevice) -> Result<Self, AppError> {
         let x25519 = Curve25519PublicKey::from_base64(&device.x25519)
             .map_err(|e| AppError::InvalidKey(e.to_string()))?;
         let ed25519 = Ed25519PublicKey::from_base64(&device.ed25519)

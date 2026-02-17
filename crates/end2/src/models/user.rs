@@ -2,15 +2,13 @@ use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use diesel::{Insertable, Queryable, Selectable};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::{AppError, RegistrationError, is_valid_username};
+use crate::{AppError, RegistrationError, UserId, is_valid_username};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::user)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
-    pub id: Uuid,
+    pub id: UserId,
     pub username: String,
     pub nickname: Option<String>,
     #[serde(skip_serializing)]

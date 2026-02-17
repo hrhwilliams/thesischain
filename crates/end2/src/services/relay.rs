@@ -8,12 +8,12 @@ use diesel::{
 };
 use r2d2::Pool;
 use tokio::sync::{RwLock, broadcast, mpsc};
-use uuid::Uuid;
 
 use crate::schema::{channel, channel_participant, device, message, message_payload, user};
 use crate::{
-    AppError, Channel, ChannelInfo, ChannelParticipant, ChatMessage, Device, InboundChatMessage,
-    MessagePayload, NewChatMessage, NewMessagePayload, OutboundChatMessage, User, WsEvent,
+    AppError, Channel, ChannelId, ChannelInfo, ChannelParticipant, ChatMessage, Device,
+    DeviceId, InboundChatMessage, MessageId, MessagePayload, NewChatMessage, NewMessagePayload,
+    OutboundChatMessage, User, UserId, WsEvent,
 };
 
 #[async_trait]
@@ -27,15 +27,15 @@ pub trait MessageRelayService: Send + Sync {
     async fn get_channel_info(
         &self,
         user: &User,
-        channel_id: Uuid,
+        channel_id: ChannelId,
     ) -> Result<ChannelInfo, AppError>;
     async fn get_user_channels(&self, user: &User) -> Result<Vec<Channel>, AppError>;
     async fn get_channel_history(
         &self,
         user: &User,
-        channel_id: Uuid,
-        device_id: Uuid,
-        after: Option<Uuid>,
+        channel_id: ChannelId,
+        device_id: DeviceId,
+        after: Option<MessageId>,
     ) -> Result<Vec<OutboundChatMessage>, AppError>;
 
     // Message operations
@@ -46,17 +46,17 @@ pub trait MessageRelayService: Send + Sync {
     ) -> Result<(ChatMessage, Vec<MessagePayload>), AppError>;
 
     // Real-time delivery
-    async fn register_device(&self, device_id: Uuid, tx: mpsc::Sender<WsEvent>);
-    async fn unregister_device(&self, device_id: Uuid);
+    async fn register_device(&self, device_id: DeviceId, tx: mpsc::Sender<WsEvent>);
+    async fn unregister_device(&self, device_id: DeviceId);
     async fn get_broadcaster(&self, user: &User) -> broadcast::Sender<WsEvent>;
-    async fn get_broadcaster_for_device(&self, device_id: Uuid) -> Option<mpsc::Sender<WsEvent>>;
+    async fn get_broadcaster_for_device(&self, device_id: DeviceId) -> Option<mpsc::Sender<WsEvent>>;
     async fn notify_user(&self, user: &User, event: WsEvent);
 }
 
 pub struct DbMessageRelayService {
     pool: Pool<ConnectionManager<PgConnection>>,
-    user_websockets: Arc<RwLock<HashMap<Uuid, broadcast::Sender<WsEvent>>>>,
-    device_websockets: Arc<RwLock<HashMap<Uuid, mpsc::Sender<WsEvent>>>>,
+    user_websockets: Arc<RwLock<HashMap<UserId, broadcast::Sender<WsEvent>>>>,
+    device_websockets: Arc<RwLock<HashMap<DeviceId, mpsc::Sender<WsEvent>>>>,
 }
 
 impl DbMessageRelayService {
@@ -77,7 +77,7 @@ impl DbMessageRelayService {
             .map_err(|e| AppError::PoolError(e.to_string()))
     }
 
-    async fn get_channel_participants(&self, channel_id: Uuid) -> Result<Vec<User>, AppError> {
+    async fn get_channel_participants(&self, channel_id: ChannelId) -> Result<Vec<User>, AppError> {
         let mut conn = self.get_conn()?;
 
         let users = tokio::task::spawn_blocking(move || {
@@ -99,7 +99,7 @@ impl MessageRelayService for DbMessageRelayService {
     async fn get_channel_info(
         &self,
         user: &User,
-        channel_id: Uuid,
+        channel_id: ChannelId,
     ) -> Result<ChannelInfo, AppError> {
         let mut conn = self.get_conn()?;
 
@@ -143,9 +143,9 @@ impl MessageRelayService for DbMessageRelayService {
     async fn get_channel_history(
         &self,
         user: &User,
-        channel_id: Uuid,
-        device_id: Uuid,
-        after: Option<Uuid>,
+        channel_id: ChannelId,
+        device_id: DeviceId,
+        after: Option<MessageId>,
     ) -> Result<Vec<OutboundChatMessage>, AppError> {
         let participants = self.get_channel_participants(channel_id).await?;
         if !participants.contains(user) {
@@ -254,12 +254,12 @@ impl MessageRelayService for DbMessageRelayService {
         Ok((message, payloads))
     }
 
-    async fn register_device(&self, device_id: Uuid, device_tx: mpsc::Sender<WsEvent>) {
+    async fn register_device(&self, device_id: DeviceId, device_tx: mpsc::Sender<WsEvent>) {
         let mut device_websockets = self.device_websockets.write().await;
         device_websockets.insert(device_id, device_tx);
     }
 
-    async fn unregister_device(&self, device_id: Uuid) {
+    async fn unregister_device(&self, device_id: DeviceId) {
         let mut device_websockets = self.device_websockets.write().await;
         device_websockets.remove(&device_id);
     }
@@ -273,7 +273,7 @@ impl MessageRelayService for DbMessageRelayService {
             .clone()
     }
 
-    async fn get_broadcaster_for_device(&self, device_id: Uuid) -> Option<mpsc::Sender<WsEvent>> {
+    async fn get_broadcaster_for_device(&self, device_id: DeviceId) -> Option<mpsc::Sender<WsEvent>> {
         let device_websockets = self.device_websockets.read().await;
         device_websockets.get(&device_id).cloned()
     }

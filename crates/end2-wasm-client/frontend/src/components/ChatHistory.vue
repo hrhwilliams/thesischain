@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { nextTick, toRef, ref, watch, computed } from 'vue'
+import { nextTick, toRef, ref, watch } from 'vue'
 import { from, useObservable } from '@vueuse/rxjs'
 import { liveQuery, Dexie } from 'dexie'
 import { db } from '../db'
 import { useUserStore } from '../stores/user'
 import { useMessageStore } from '../stores/message'
-import { useQuery } from '@tanstack/vue-query'
+import { useChannelStore } from '../stores/channel'
 
 const props = defineProps({
     channel_id: { type: String, required: true }
 })
 
+const isReady = ref(false);
 const channel_id = toRef(props, 'channel_id')
 const userStore = useUserStore()
+const channelStore = useChannelStore()
 const messageStore = useMessageStore()
 const history = ref<HTMLDivElement | null>(null)
 
@@ -46,17 +48,23 @@ watch(messages, async (new_msgs, old_msgs) => {
     }
 })
 
-useQuery({
-    queryKey: ['chat-history', channel_id.value],
-    enabled: computed(() => userStore.logged_in),
-    queryFn: async () => {
-        await messageStore.fetchHistory(channel_id.value)
-    },
-})
+watch(channel_id, async (channelId) => {
+    if (!channelId) return;
+    isReady.value = false;
+
+    await messageStore.fetchHistory(channelId);
+
+    const channelInfo = await channelStore.fetchChannel(channelId);
+    if (channelInfo.ok) {
+        channelInfo.value.participants.forEach(u => userStore.updateUser(u));
+    }
+
+    isReady.value = true;
+}, { immediate: true });
 </script>
 
 <template>
-    <div ref="history" class="message-history">
+    <div v-if="isReady" ref="history" class="message-history">
         <div v-for="message in messages" :key="message.message_id" class="message">
             <div v-if="userStore.has_nickname(message.author_id)">
                 <span class="author">{{ userStore.get_display_name(message.author_id) }} ({{ userStore.get_username(message.author_id) }})</span> <span class="date">{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
@@ -66,6 +74,9 @@ useQuery({
             </div>
             <div class="content">{{ message.plaintext }}</div>
         </div>
+    </div>
+    <div v-else>
+        loading...
     </div>
 </template>
 

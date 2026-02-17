@@ -47,6 +47,10 @@ export const useUserStore = defineStore('user', () => {
         }
     }
 
+    function updateUser(user: UserInfo) {
+        users.value[user.id] = user
+    }
+
     function has_nickname(user_id: string) {
         const user = users.value[user_id]
 
@@ -110,5 +114,6 @@ export const useUserStore = defineStore('user', () => {
         get_username,
         get_display_name,
         change_nickname,
+        updateUser,
     }
 })

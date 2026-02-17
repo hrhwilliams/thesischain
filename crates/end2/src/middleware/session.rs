@@ -9,9 +9,8 @@ use axum_extra::extract::{
     cookie::{Cookie, Expiration, SameSite},
 };
 use time::Duration;
-use uuid::Uuid;
 
-use crate::AppState;
+use crate::{AppState, SessionId};
 
 pub async fn create_session(
     State(state): State<AppState>,
@@ -26,16 +25,15 @@ pub async fn create_session(
     let req = Request::from_parts(parts, body);
 
     if let Some(session_cookie) = jar.get("Session") {
-        let session_id = Uuid::parse_str(session_cookie.value())
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        if state
-            .get_session(session_id)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .is_some()
-        {
-            return Ok((jar, next.run(req).await));
+        if let Ok(session_id) = SessionId::try_from(session_cookie.value()) {
+            if state
+                .get_session(session_id)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .is_some()
+            {
+                return Ok((jar, next.run(req).await));
+            }
         }
     }
 

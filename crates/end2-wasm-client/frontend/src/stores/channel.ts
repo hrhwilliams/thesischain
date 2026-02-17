@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
-import { request } from "../api"
+import { Err, Ok, request, type ApiResult } from "../api"
 import { useUserStore } from "./user"
 import type { ChannelInfo } from "../types/channel"
 import type { DeviceInfo } from "../types/device"
@@ -18,16 +18,19 @@ export const useChannelStore = defineStore('channel', () => {
         channels.value[channelId] = channelInfo
     }
 
-    async function fetchChannel(channelId: string) {
+    async function fetchChannel(channelId: string): Promise<ApiResult<ChannelInfo>> {
         if (channels.value[channelId]) {
-            return
+            return Ok(channels.value[channelId])
         }
 
         const response = await request<ChannelInfo>(`/channel/${channelId}`, 'GET')
+
         if (response.ok) {
             channels.value[channelId] = response.value
+            return response
         } else {
             console.error('failed to fetch channel info:', response.error)
+            return Err(response.error)
         }
     }
 

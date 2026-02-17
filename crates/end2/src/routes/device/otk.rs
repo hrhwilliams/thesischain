@@ -4,16 +4,14 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
-use uuid::Uuid;
-
-use crate::{ApiError, AppError, AppState, InboundOtks, User};
+use crate::{ApiError, AppError, AppState, DeviceId, InboundOtks, UserId, User};
 
 #[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]
 pub async fn get_otks(
     State(app_state): State<AppState>,
     _user: User,
-    Path(device_id): Path<Uuid>,
+    Path(device_id): Path<DeviceId>,
 ) -> Result<impl IntoResponse, ApiError> {
     let otks = app_state
         .otks
@@ -29,7 +27,7 @@ pub async fn get_otks(
 pub async fn upload_otks(
     State(app_state): State<AppState>,
     user: User,
-    Path(device_id): Path<Uuid>,
+    Path(device_id): Path<DeviceId>,
     Json(otks): Json<InboundOtks>,
 ) -> Result<impl IntoResponse, ApiError> {
     app_state.otks.upload_otks(&user, device_id, otks).await?;
@@ -41,7 +39,7 @@ pub async fn upload_otks(
 pub async fn get_user_device_otk(
     State(app_state): State<AppState>,
     _user: User,
-    Path((user_id, device_id)): Path<(Uuid, Uuid)>,
+    Path((user_id, device_id)): Path<(UserId, DeviceId)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let user = app_state
         .auth

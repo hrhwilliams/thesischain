@@ -3,14 +3,12 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use uuid::Uuid;
-
-use crate::{ApiError, AppState};
+use crate::{ApiError, AppState, UserId};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_info(
     State(app_state): State<AppState>,
-    Path(user_id): Path<Uuid>,
+    Path(user_id): Path<UserId>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(app_state.auth.get_user_info(user_id).await?))
 }

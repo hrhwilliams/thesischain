@@ -1,7 +1,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{Insertable, Queryable, Selectable};
 use serde::Deserialize;
-use uuid::Uuid;
+use crate::{DeviceId, MessageId};
 
 use crate::AppError;
 
@@ -9,8 +9,8 @@ use crate::AppError;
 #[diesel(table_name = crate::schema::message_payload)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MessagePayload {
-    pub message_id: Uuid,
-    pub recipient_device_id: Uuid,
+    pub message_id: MessageId,
+    pub recipient_device_id: DeviceId,
     pub ciphertext: Vec<u8>,
     pub is_pre_key: bool,
 }
@@ -19,21 +19,21 @@ pub struct MessagePayload {
 #[diesel(table_name = crate::schema::message_payload)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewMessagePayload {
-    pub message_id: Uuid,
-    pub recipient_device_id: Uuid,
+    pub message_id: MessageId,
+    pub recipient_device_id: DeviceId,
     pub ciphertext: Vec<u8>,
     pub is_pre_key: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct InboundMessagePayload {
-    pub recipient_device_id: Uuid,
+    pub recipient_device_id: DeviceId,
     pub ciphertext: String,
     pub is_pre_key: bool,
 }
 
 impl InboundMessagePayload {
-    pub fn into_new_message(self, message_id: Uuid) -> Result<NewMessagePayload, AppError> {
+    pub fn into_new_message(self, message_id: MessageId) -> Result<NewMessagePayload, AppError> {
         Ok(NewMessagePayload {
             message_id,
             recipient_device_id: self.recipient_device_id,

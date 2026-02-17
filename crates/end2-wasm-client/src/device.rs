@@ -1,7 +1,4 @@
-use std::str::FromStr;
-
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use vodozemac::{
     Curve25519PublicKey,
     olm::{
@@ -11,7 +8,7 @@ use vodozemac::{
 };
 use wasm_bindgen::prelude::*;
 
-use crate::message::{DecryptedMessage, InboundChatMessage, MessagePayload};
+use crate::{message::{DecryptedMessage, InboundChatMessage, MessagePayload}, types::{DeviceId, UserId}};
 
 #[derive(Serialize)]
 pub struct EncryptionOutput {
@@ -27,8 +24,8 @@ pub struct DecryptionOutput {
 
 #[derive(Deserialize)]
 pub struct DeviceInfo {
-    pub device_id: Uuid,
-    pub user_id: Uuid,
+    pub device_id: DeviceId,
+    pub user_id: UserId,
     pub ed25519: String,
     pub x25519: String,
 }
@@ -43,7 +40,7 @@ pub struct UploadOtks {
 
 #[derive(Serialize)]
 pub struct IdentityKeys {
-    pub device_id: Uuid,
+    pub device_id: DeviceId,
     pub x25519: String,
     pub ed25519: String,
     pub signature: String,
@@ -52,7 +49,7 @@ pub struct IdentityKeys {
 #[derive(Deserialize, Serialize)]
 pub struct PickledDevice {
     account: AccountPickle,
-    device_id: Uuid,
+    device_id: DeviceId,
 }
 
 impl From<PickledDevice> for Device {
@@ -67,7 +64,7 @@ impl From<PickledDevice> for Device {
 #[wasm_bindgen]
 pub struct Device {
     account: Account,
-    device_id: Uuid,
+    device_id: DeviceId,
 }
 
 #[wasm_bindgen]
@@ -77,16 +74,15 @@ impl Device {
     ///
     /// # Errors
     /// Returns `JsError` if the device ID is not a valid UUID.
-    pub fn new(device_id: &str) -> Result<Self, JsError> {
+    pub fn new(device_id: String) -> Result<Self, JsError> {
         Ok(Self {
-            device_id: Uuid::from_str(device_id)?,
+            device_id: DeviceId(device_id),
             account: Account::new(),
         })
     }
 
-    #[must_use]
     pub fn device_id(&self) -> String {
-        self.device_id.to_string()
+        self.device_id.0.clone()
     }
 
     /// Serializes the device state for storage.
@@ -96,7 +92,7 @@ impl Device {
     pub fn to_pickle(&self) -> Result<JsValue, JsError> {
         let pickle = PickledDevice {
             account: self.account.pickle(),
-            device_id: self.device_id,
+            device_id: self.device_id.clone(),
         };
 
         Ok(serde_wasm_bindgen::to_value(&pickle)?)
@@ -125,7 +121,7 @@ impl Device {
         let signature = self.account.sign(&message);
 
         let payload = IdentityKeys {
-            device_id: self.device_id,
+            device_id: self.device_id.clone(),
             x25519: keys.curve25519.to_base64(),
             ed25519: keys.ed25519.to_base64(),
             signature: signature.to_base64(),

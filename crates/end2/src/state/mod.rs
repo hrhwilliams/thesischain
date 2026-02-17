@@ -3,6 +3,7 @@ mod session;
 use std::sync::Arc;
 
 use diesel::{PgConnection, r2d2::ConnectionManager};
+use ed25519_dalek::SigningKey;
 use r2d2::Pool;
 
 use crate::services::{AuthService, DeviceKeyService, MessageRelayService, OtkService};
@@ -14,9 +15,7 @@ pub struct AppState {
     pub otks: Arc<dyn OtkService>,
     pub relay: Arc<dyn MessageRelayService>,
     pub oauth: crate::OAuthHandler,
-    /// Ed25519 signing key for producing identity attestations.
-    /// When set, enables the `/auth/attest` endpoint.
-    pub attestation_key: Option<Arc<ed25519_dalek::SigningKey>>,
+    pub signing_key: Arc<SigningKey>,
     pool: Pool<ConnectionManager<PgConnection>>,
 }
 
@@ -29,6 +28,7 @@ impl AppState {
         relay: Arc<dyn MessageRelayService>,
         oauth: crate::OAuthHandler,
         pool: Pool<ConnectionManager<PgConnection>>,
+        signing_key: SigningKey,
     ) -> Self {
         Self {
             auth,
@@ -36,7 +36,7 @@ impl AppState {
             otks,
             relay,
             oauth,
-            attestation_key: None,
+            signing_key: Arc::new(signing_key),
             pool,
         }
     }

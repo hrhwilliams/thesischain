@@ -64,7 +64,7 @@ export const useMessageStore = defineStore('message', () => {
 
         const devices = channelStore.getDevices(channelId)
         const message: EncryptedMessage = {
-            message_id: v7(),
+            message_id: `msg_${v7()}`,
             device_id: deviceId,
             channel_id: channelId,
             payloads: [],

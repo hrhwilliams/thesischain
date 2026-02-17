@@ -1,4 +1,6 @@
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{PgConnection, r2d2::ConnectionManager};
+use ed25519_dalek::SigningKey;
 use end2::{App, OAuthHandler};
 use mimalloc::MiMalloc;
 use tokio::net::TcpListener;
@@ -21,6 +23,17 @@ async fn main() -> Result<(), std::io::Error> {
         .parse()
         .expect("BACKEND_PORT must be in range 0-65535");
 
+    let signing_key = std::env::var("SERVER_SIGNING_KEY").expect("SERVER_SIGNING_KEY must be set");
+    let signing_key_bytes = BASE64_STANDARD_NO_PAD
+        .decode(signing_key)
+        .expect("invalid base64");
+    let signing_key = SigningKey::from_bytes(
+        signing_key_bytes
+            .as_slice()
+            .try_into()
+            .expect("invalid key length"),
+    );
+
     let client_id =
         std::env::var("DISCORD_OAUTH_CLIENT_ID").expect("DISCORD_OAUTH_CLIENT_ID must be set");
     let client_secret =
@@ -36,7 +49,7 @@ async fn main() -> Result<(), std::io::Error> {
         .build(manager)
         .expect("Failed to connect to Postgres");
 
-    let app = App::new(oauth, pool);
+    let app = App::new(oauth, pool, signing_key);
 
     let listener = TcpListener::bind((ip, port)).await.expect("TcpListener");
 

@@ -3,12 +3,12 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use anyhow::Result;
+use diesel::{ExpressionMethods, RunQueryDsl};
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
-use diesel::{ExpressionMethods, RunQueryDsl};
 use end2::{
-    App, AppState, AuthService, ChainDeviceKeyService, DbAuthService, DbMessageRelayService,
-    DbOtkService, InboundUser, OAuthHandler,
+    App, AppState, AuthService, ChainDeviceKeyService, ChannelId, DbAuthService,
+    DbMessageRelayService, DbOtkService, DeviceId, InboundUser, MessageId, OAuthHandler, UserId,
 };
 use miner::http::MinerApi;
 use miner::network::Node;
@@ -53,7 +53,8 @@ pub async fn spawn_app() -> u16 {
         .build(manager)
         .expect("Failed to connect to Postgres");
 
-    let app = App::new(oauth, pool);
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let app = App::new(oauth, pool, signing_key);
     tokio::spawn(async move { app.run(listener).await });
 
     port
@@ -62,7 +63,7 @@ pub async fn spawn_app() -> u16 {
 pub struct ChainTestUser {
     pub username: String,
     pub password: String,
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub device: Device,
     pub chain_signing_key: SigningKey,
 }
@@ -157,20 +158,22 @@ pub async fn spawn_app_with_chain() -> ChainTestEnv {
 
     let genesis = create_genesis(&bootstrap_key, 1, &[bootstrap_device], None)
         .expect("Failed to create genesis block");
-    let chain = Chain::new(genesis, Some(backend_verifying_key))
-        .expect("Failed to create chain");
+    let chain = Chain::new(genesis, Some(backend_verifying_key)).expect("Failed to create chain");
     let chain = Arc::new(RwLock::new(chain));
 
     // Phase 5: Start miner HTTP API (shares chain)
-    let miner_api = MinerApi::new(Arc::clone(&chain), bootstrap_key, Some(backend_verifying_key));
+    let miner_api = MinerApi::new(
+        Arc::clone(&chain),
+        bootstrap_key,
+        Some(backend_verifying_key),
+    );
     tokio::spawn(async move { miner_api.run(miner_listener).await });
 
     // Phase 6: Start backend with ChainDeviceKeyService (shares same chain)
     let device_keys = Arc::new(ChainDeviceKeyService::new(Arc::clone(&chain)));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
     let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-    let mut app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
-    app_state.attestation_key = Some(Arc::new(backend_signing_key.clone()));
+    let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, backend_signing_key.clone());
 
     let app = App::from_state(app_state);
     tokio::spawn(async move { app.run(backend_listener).await });
@@ -276,10 +279,7 @@ pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
         for j in 0..node_addrs.len() {
             if i != j {
                 let (_, ref addr) = node_addrs[j];
-                nodes[i]
-                    .0
-                    .dial(addr.clone())
-                    .expect("Failed to dial peer");
+                nodes[i].0.dial(addr.clone()).expect("Failed to dial peer");
                 nodes[i].0.add_explicit_peer(&node_addrs[j].0);
             }
         }
@@ -347,8 +347,7 @@ pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
     let device_keys = Arc::new(ChainDeviceKeyService::new(chain_for_backend));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
     let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-    let mut app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool);
-    app_state.attestation_key = Some(Arc::new(backend_signing_key.clone()));
+    let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, backend_signing_key.clone());
 
     let app = App::from_state(app_state);
     tokio::spawn(async move { app.run(backend_listener).await });
@@ -371,27 +370,27 @@ pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
 
 #[derive(Deserialize)]
 pub struct UserInfo {
-    pub id: Uuid,
+    pub id: UserId,
     pub username: String,
     pub nickname: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct ChannelInfo {
-    pub channel_id: Uuid,
+    pub channel_id: ChannelId,
     pub participants: Vec<UserInfo>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ChannelId {
-    pub channel_id: Uuid,
+pub struct ChannelRef {
+    pub channel_id: ChannelId,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ChatMessage {
-    pub message_id: Uuid,
-    pub device_id: Uuid,
-    pub channel_id: Uuid,
+    pub message_id: MessageId,
+    pub device_id: DeviceId,
+    pub channel_id: ChannelId,
     pub payloads: Vec<MessagePayload>,
 }
 
@@ -399,10 +398,10 @@ pub struct ApiClient {
     client: Client,
     device: Device,
     // device_id, session
-    sessions: HashMap<Uuid, Session>,
+    sessions: HashMap<DeviceId, Session>,
     // channel_id, (message_id, message)
-    histories: HashMap<Uuid, BTreeMap<Uuid, DecryptedMessage>>,
-    user_id: Uuid,
+    histories: HashMap<ChannelId, BTreeMap<MessageId, DecryptedMessage>>,
+    user_id: UserId,
     username: String,
     password: String,
     base_url: String,
@@ -418,7 +417,7 @@ impl ApiClient {
     pub fn preconfigured(
         username: &str,
         password: &str,
-        user_id: Uuid,
+        user_id: UserId,
         device: Device,
         port: u16,
     ) -> Self {
@@ -479,7 +478,7 @@ impl ApiClient {
                 .json::<DeviceInfo>()
                 .await?;
 
-            let device = Device::new(device_info.device_id);
+            let device = Device::new(device_info.device_id.into_inner());
 
             let _ = client
                 .put(format!("{base_url}/me/device/{}", device_info.device_id))
@@ -537,7 +536,7 @@ impl ApiClient {
     }
 
     pub async fn upload_otks(&mut self) -> Result<()> {
-        self.post(&format!("/me/device/{}/otks", self.device.id()))
+        self.post(&format!("/me/device/{}/otks", DeviceId::from(self.device.id())))
             .json(&self.device.get_otks(10))
             .send()
             .await?
@@ -558,18 +557,18 @@ impl ApiClient {
         Ok(())
     }
 
-    pub async fn channels(&self) -> Result<Vec<ChannelId>> {
+    pub async fn channels(&self) -> Result<Vec<ChannelRef>> {
         let response = self
             .get("/me/channels")
             .send()
             .await?
-            .json::<Vec<ChannelId>>()
+            .json::<Vec<ChannelRef>>()
             .await?;
 
         Ok(response)
     }
 
-    pub async fn get_channel_participants(&self, channel: &ChannelId) -> Result<ChannelInfo> {
+    pub async fn get_channel_participants(&self, channel: &ChannelRef) -> Result<ChannelInfo> {
         let response = self
             .get(&format!("/channel/{}", channel.channel_id))
             .send()
@@ -580,7 +579,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    pub async fn get_user_info(&self, user_id: Uuid) -> Result<UserInfo> {
+    pub async fn get_user_info(&self, user_id: UserId) -> Result<UserInfo> {
         let response = self
             .get(&format!("/user/{}", user_id))
             .send()
@@ -591,7 +590,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    pub async fn get_user_devices(&self, user_id: Uuid) -> Result<Vec<DeviceInfo>> {
+    pub async fn get_user_devices(&self, user_id: UserId) -> Result<Vec<DeviceInfo>> {
         let response = self
             .get(&format!("/user/{}/devices", user_id))
             .send()
@@ -602,7 +601,7 @@ impl ApiClient {
         Ok(response)
     }
 
-    pub async fn get_device_info(&self, user_id: Uuid, device_id: Uuid) -> Result<DeviceInfo> {
+    pub async fn get_device_info(&self, user_id: UserId, device_id: DeviceId) -> Result<DeviceInfo> {
         let response = self
             .get(&format!("/user/{}/device/{}", user_id, device_id))
             .send()
@@ -619,7 +618,7 @@ impl ApiClient {
         }
     }
 
-    pub async fn get_device_otk(&self, user_id: Uuid, device_id: Uuid) -> Result<Otk> {
+    pub async fn get_device_otk(&self, user_id: UserId, device_id: DeviceId) -> Result<Otk> {
         let response = self
             .post(&format!("/user/{}/device/{}/otk", user_id, device_id))
             .send()
@@ -643,7 +642,7 @@ impl ApiClient {
             for device in device_ids {
                 // Skip our own device — we can't decrypt our own messages
                 // (the inbound/outbound session pair gets overwritten)
-                if device.device_id == self.device.id() {
+                if device.device_id == DeviceId::from(self.device.id()) {
                     continue;
                 }
 
@@ -672,8 +671,8 @@ impl ApiClient {
         }
 
         let message = ChatMessage {
-            message_id: Uuid::now_v7(),
-            device_id: self.device.id(),
+            message_id: MessageId::new_v7(),
+            device_id: DeviceId::from(self.device.id()),
             channel_id: channel_info.channel_id,
             payloads,
         };
@@ -687,7 +686,7 @@ impl ApiClient {
         Ok(())
     }
 
-    pub async fn get_history(&mut self, channel_id: Uuid) -> Result<Vec<DecryptedMessage>> {
+    pub async fn get_history(&mut self, channel_id: ChannelId) -> Result<Vec<DecryptedMessage>> {
         let last_message_id = self
             .histories
             .get(&channel_id)
@@ -696,7 +695,7 @@ impl ApiClient {
         let mut url = format!(
             "/channel/{}/history?device={}",
             channel_id,
-            self.device.id()
+            DeviceId::from(self.device.id())
         );
 
         if let Some(last) = last_message_id {
@@ -711,7 +710,7 @@ impl ApiClient {
             .await?;
 
         let mut decrypted_messages = Vec::with_capacity(messages.len());
-        let mut devices = HashMap::<Uuid, DeviceInfo>::new();
+        let mut devices = HashMap::<DeviceId, DeviceInfo>::new();
 
         for message in messages {
             let device_id = message.device_id;

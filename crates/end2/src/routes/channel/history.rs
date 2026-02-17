@@ -4,21 +4,19 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
-use uuid::Uuid;
-
-use crate::{ApiError, AppState, User};
+use crate::{ApiError, AppState, ChannelId, DeviceId, MessageId, User};
 
 #[derive(Deserialize)]
 pub struct HistoryRequest {
-    pub device: Uuid,
-    pub after: Option<Uuid>,
+    pub device: DeviceId,
+    pub after: Option<MessageId>,
 }
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_channel_history(
     State(app_state): State<AppState>,
     user: User,
-    Path(channel_id): Path<Uuid>,
+    Path(channel_id): Path<ChannelId>,
     Query(HistoryRequest { device, after }): Query<HistoryRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(

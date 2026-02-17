@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { request, type ApiError } from '../api'
 import { useUserStore } from '../stores/user'
 import ErrorMessage from '../components/ErrorMessage.vue'
 import { useChannelStore } from '../stores/channel'
+import { useQuery } from '@tanstack/vue-query'
 
 const channelStore = useChannelStore()
 const userStore = useUserStore()
@@ -28,8 +29,12 @@ async function onSubmit() {
     username.value = ''
 }
 
-onMounted(() => {
-    channelStore.fetchChannels()
+useQuery({
+    queryKey: ['channels'],
+    enabled: computed(() => userStore.logged_in),
+    queryFn: async () => {
+        await channelStore.fetchChannels()
+    },
 })
 </script>
 

@@ -3,10 +3,7 @@ use axum::{
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
-use std::str::FromStr;
-use uuid::Uuid;
-
-use crate::{ApiError, AppState, ExtractError, WebSession};
+use crate::{ApiError, AppState, ExtractError, SessionId, WebSession};
 
 impl FromRequestParts<AppState> for WebSession {
     type Rejection = ApiError;
@@ -16,7 +13,7 @@ impl FromRequestParts<AppState> for WebSession {
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
         let session_cookie = jar.get("Session").ok_or(ExtractError::NoSession)?;
-        let session_id = Uuid::from_str(session_cookie.value())
+        let session_id = SessionId::try_from(session_cookie.value())
             .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
         let session = app_state
             .get_session(session_id)
@@ -38,7 +35,7 @@ impl OptionalFromRequestParts<AppState> for WebSession {
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
         if let Some(session_cookie) = jar.get("Session") {
-            let session_id = Uuid::from_str(session_cookie.value())
+            let session_id = SessionId::try_from(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
             let session = app_state
                 .get_session(session_id)

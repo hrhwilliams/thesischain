@@ -4,10 +4,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use std::str::FromStr;
-use uuid::Uuid;
-
-use crate::{ApiError, AppState, ExtractError, User};
+use crate::{ApiError, AppState, ExtractError, SessionId, UserId, User};
 
 impl User {
     async fn get_user_from_parts(
@@ -21,7 +18,7 @@ impl User {
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
 
         if let Some(session_cookie) = jar.get("Session") {
-            let session_id = Uuid::from_str(session_cookie.value())
+            let session_id = SessionId::try_from(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
             let session = app_state
                 .get_session(session_id)
@@ -30,7 +27,7 @@ impl User {
                 .ok_or(ExtractError::NoSession)?;
 
             let user_id = app_state
-                .get_from_session::<Uuid>(&session, "user_id")
+                .get_from_session::<UserId>(&session, "user_id")
                 .await
                 .map_err(ExtractError::LookupError)?
                 .ok_or(ExtractError::NoUser)?;

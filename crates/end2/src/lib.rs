@@ -10,6 +10,7 @@ mod routes;
 mod schema;
 mod services;
 mod state;
+mod types;
 mod util;
 mod ws;
 
@@ -22,5 +23,6 @@ pub use routes::*;
 pub use schema::*;
 pub use services::*;
 pub use state::*;
+pub use types::*;
 pub use util::*;
 pub use ws::*;

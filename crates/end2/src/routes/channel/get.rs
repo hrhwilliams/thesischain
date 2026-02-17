@@ -3,15 +3,13 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use uuid::Uuid;
-
-use crate::{ApiError, AppState, User};
+use crate::{ApiError, AppState, ChannelId, User};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_channel_info(
     State(app_state): State<AppState>,
     user: User,
-    Path(channel_id): Path<Uuid>,
+    Path(channel_id): Path<ChannelId>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(
         app_state.relay.get_channel_info(&user, channel_id).await?,

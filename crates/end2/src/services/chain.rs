@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 use miner::{Chain, DeviceRecord};
 
-use crate::{AppError, Device, InboundDevice, User};
+use crate::{AppError, Device, DeviceId, InboundDevice, User, UserId};
 
 use super::DeviceKeyService;
 
@@ -23,8 +22,8 @@ impl ChainDeviceKeyService {
 
 fn device_from_record(r: &DeviceRecord) -> Device {
     Device {
-        id: r.device_id,
-        user_id: r.user_id,
+        id: DeviceId::from(r.device_id),
+        user_id: UserId::from(r.user_id),
         ed25519: Some(r.ed25519.to_vec()),
         x25519: Some(r.x25519.to_vec()),
     }
@@ -39,14 +38,14 @@ impl DeviceKeyService for ChainDeviceKeyService {
         ))
     }
 
-    async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError> {
+    async fn get_device(&self, user: &User, device_id: DeviceId) -> Result<Device, AppError> {
         let (record_user_id, device) = {
             let chain = self.chain.read().await;
             let record = chain
                 .state()
-                .get_device(device_id)
+                .get_device(device_id.into_inner())
                 .ok_or_else(|| AppError::QueryFailed("device not found on chain".into()))?;
-            (record.user_id, device_from_record(record))
+            (UserId::from(record.user_id), device_from_record(record))
         };
 
         if record_user_id != user.id {
@@ -61,7 +60,7 @@ impl DeviceKeyService for ChainDeviceKeyService {
             let chain = self.chain.read().await;
             chain
                 .state()
-                .get_user_devices(user.id)
+                .get_user_devices(user.id.into_inner())
                 .into_iter()
                 .map(device_from_record)
                 .collect()
@@ -72,7 +71,7 @@ impl DeviceKeyService for ChainDeviceKeyService {
     async fn set_device_keys(
         &self,
         _user: &User,
-        _device_id: Uuid,
+        _device_id: DeviceId,
         _keys: InboundDevice,
     ) -> Result<Device, AppError> {
         Err(AppError::UserError(

@@ -4,20 +4,19 @@ use diesel::{
     SelectableHelper, r2d2::ConnectionManager,
 };
 use r2d2::Pool;
-use uuid::Uuid;
 
 use crate::schema::device;
-use crate::{AppError, Device, InboundDevice, NewDevice, User};
+use crate::{AppError, Device, DeviceId, InboundDevice, NewDevice, User};
 
 #[async_trait]
 pub trait DeviceKeyService: Send + Sync {
     async fn new_device_for(&self, user: &User) -> Result<Device, AppError>;
-    async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError>;
+    async fn get_device(&self, user: &User, device_id: DeviceId) -> Result<Device, AppError>;
     async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError>;
     async fn set_device_keys(
         &self,
         user: &User,
-        device_id: Uuid,
+        device_id: DeviceId,
         keys: InboundDevice,
     ) -> Result<Device, AppError>;
 }
@@ -62,7 +61,7 @@ impl DeviceKeyService for DbDeviceKeyService {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_device(&self, user: &User, device_id: Uuid) -> Result<Device, AppError> {
+    async fn get_device(&self, user: &User, device_id: DeviceId) -> Result<Device, AppError> {
         let mut conn = self.get_conn()?;
         let user_id = user.id;
 
@@ -93,7 +92,7 @@ impl DeviceKeyService for DbDeviceKeyService {
     async fn set_device_keys(
         &self,
         user: &User,
-        device_id: Uuid,
+        device_id: DeviceId,
         device_keys: InboundDevice,
     ) -> Result<Device, AppError> {
         let mut conn = self.get_conn()?;

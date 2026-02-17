@@ -9,13 +9,13 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio::time::{Duration, interval, timeout};
-use uuid::Uuid;
+use crate::DeviceId;
 
 #[tracing::instrument(skip(app_state, ws))]
 pub async fn handle_websocket(
     State(app_state): State<AppState>,
     user: User,
-    Path(device_id): Path<Uuid>,
+    Path(device_id): Path<DeviceId>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(ws.on_upgrade(move |socket| websocket(socket, user, device_id, app_state)))
@@ -54,7 +54,7 @@ async fn send_event(
 }
 
 #[tracing::instrument(skip(socket, app_state))]
-pub async fn websocket(socket: WebSocket, user: User, device_id: Uuid, app_state: AppState) {
+pub async fn websocket(socket: WebSocket, user: User, device_id: DeviceId, app_state: AppState) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     let user_tx = app_state.relay.get_broadcaster(&user).await;
