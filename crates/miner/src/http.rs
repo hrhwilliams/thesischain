@@ -135,8 +135,7 @@ async fn submit_tx(
         }
         TxSink::Channel(sender) => {
             if sender.send(tx).await.is_err() {
-                return (StatusCode::INTERNAL_SERVER_ERROR, "node channel closed")
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "node channel closed").into_response();
             }
             StatusCode::ACCEPTED.into_response()
         }
@@ -152,7 +151,10 @@ async fn mine_block(State(state): State<MinerState>) -> impl IntoResponse {
             block_author_key,
         } => (Arc::clone(pending_txs), Arc::clone(block_author_key)),
         TxSink::Channel(_) => {
-            return (StatusCode::NOT_FOUND, "mining not available in integrated mode")
+            return (
+                StatusCode::NOT_FOUND,
+                "mining not available in integrated mode",
+            )
                 .into_response();
         }
     };

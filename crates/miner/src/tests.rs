@@ -248,7 +248,7 @@ fn get_user_devices_returns_all_devices() {
         GenesisDevice {
             user_id,
             device_id: device2_id,
-            signing_key: key2.clone(),
+            signing_key: key2,
             x25519: random_x25519(),
         },
     ];
@@ -546,9 +546,11 @@ fn register_device_with_valid_attestation() {
     let signed = crypto::sign_transaction(tx, 0, &device_key).expect("sign tx");
 
     let previous_hash = chain.head_hash().expect("tip hash");
-    let block = crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority)
-        .expect("sign block");
-    chain.append(block).expect("append should succeed with valid attestation");
+    let block =
+        crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority).expect("sign block");
+    chain
+        .append(block)
+        .expect("append should succeed with valid attestation");
 
     assert!(chain.state().get_device(device_id).is_some());
 }
@@ -579,8 +581,8 @@ fn register_device_with_invalid_attestation_rejected() {
     let signed = crypto::sign_transaction(tx, 0, &device_key).expect("sign tx");
 
     let previous_hash = chain.head_hash().expect("tip hash");
-    let block = crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority)
-        .expect("sign block");
+    let block =
+        crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority).expect("sign block");
 
     match chain.append(block) {
         Err(ChainError::InvalidAttestation(_)) => {}
@@ -614,8 +616,8 @@ fn register_device_attestation_field_mismatch_rejected() {
     let signed = crypto::sign_transaction(tx, 0, &device_key).expect("sign tx");
 
     let previous_hash = chain.head_hash().expect("tip hash");
-    let block = crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority)
-        .expect("sign block");
+    let block =
+        crypto::sign_block(1, 2000, previous_hash, vec![signed], &authority).expect("sign block");
 
     match chain.append(block) {
         Err(ChainError::InvalidAttestation(msg)) => {

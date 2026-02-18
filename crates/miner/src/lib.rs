@@ -16,5 +16,13 @@ pub use genesis::{GenesisDevice, create_genesis};
 pub use state::{DeviceRecord, KeyDirectory};
 pub use types::{Block, BlockHeader, ChainId, IdentityAttestation, SignedTransaction, Transaction};
 
+/// Information about a miner node, used for registration and peer discovery.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MinerInfo {
+    pub http_addr: String,
+    pub peer_id: String,
+    pub multiaddr: String,
+}
+
 #[cfg(test)]
 mod tests;
