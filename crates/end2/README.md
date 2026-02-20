@@ -1,16 +1,40 @@
 # End2
 
-Simple centralized end-to-end encrypted chat service.
+An end-to-end encrypted (E2EE) chat application with support for centralized (single-entity trust) key distribution and distributed ledger key distribution.
 
-## Definitions
+## Motivation
 
-- User
-- Challenge
-- WebSession
-- OlmSession
-- One-Time Key
-- Channel
-- Message
+One key source of distrust in E2EE chat applications is the offloading of key distribution to the entity in control of the application. This is done because it is far more convenient to the user than manually verifying and distributing keys themselves, such as with OpenPGP. However, the trade-off in this is that the user now must trust the service to distribute authentic keys from the other users they wish to talk to.
+
+To somewhat mitigate this concern, many services now allow users to compare keys when they are in physical proximity. However, this requires manual intervention by the users involved, knowledge of public-key cryptography, and does not scale when the vast majority of users are not often in physical proximity with the users they are talking with.
+
+The goal of End2 is to provide a solution that does scale by offloading key distribution to a user-auditable distributed ledger. The server still plays the role of entity authentication and message relay, but is unable to distribute all of the cryptographic material involved in establishing E2EE sessions. Instead, the server only authenticates users involved in a session, and users request keys from a user-maintained and fully auditable distributed ledger. This means that the server alone is incapable of compromising sessions by distributing inauthentic keys.
+
+## Design
+
+End2 was created to compare two different methods of key distribution for E2EE: centralized and decentralized. The former method is what is found in most popular E2EE chat applications, such as Telegram, WhatsApp, and Facebook Messenger. It relies on a single entity (*e.g.* WhatsApp) to distribute cryptographic keys for establishing sessions, which is problematic for user trust. The latter method offloads key distribution to a distributed network of peers storing cryptographic keys via a distributed ledger protocol.
+
+The rest of this document will discuss only End2 with decentralized key distribution.
+
+### Security goals
+
+As stated above, the main motivation for creating End2 is to provide an E2EE chat application that does not require the user to trust the service to properly distribute keys. This eliminates a key attack vector that is exploitable by other E2EE chat applications using a centralized model of key distribution.
+
+#### Threat model
+
+End2's threat model assumes even the service itself can act adversarially and thus is designed to minimize possible attacks it can take against its own users.
+
+### System architecture
+
+The End2 backend is split into three main services: entity authentication, key distribution, and message relay. Entity authentication involves registration of users and provenance of user identity. Key distribution involves distributing cryptographic keys used for E2EE session establishment and continuation. Finally, message relay involves how messages are forwarded to their intended recipients.
+
+#### Centralized key distribution
+
+When running with centralized key distribution, the server controls user authentication, message relay, and both long-term key and one-time key distribution. Device long-term keys and one-time keys are stored in the backend's PostgreSQL database.
+
+#### Blockchain-based key distribution
+
+When running with blockchain-based key distribution, the server controls user authentication, message relay, and one-time key distribution, but not long-term key distribution.
 
 ## Flow
 
