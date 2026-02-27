@@ -1,7 +1,7 @@
+use crate::{ApiError, AppError, AppState, DeviceId, User};
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
-use crate::{ApiError, AppError, AppState, DeviceId, User};
 
 #[derive(Deserialize)]
 pub struct AttestRequest {
@@ -25,8 +25,9 @@ pub async fn attest(
         .expect("system time before unix epoch")
         .as_secs();
 
-    let attestation = miner::sign_attestation(user.id.into_inner(), device_id.into_inner(), issued_at, key)
-        .map_err(|e| AppError::UserError(e.to_string()))?;
+    let attestation =
+        miner::sign_attestation(user.id.into_inner(), device_id.into_inner(), issued_at, key)
+            .map_err(|e| AppError::UserError(e.to_string()))?;
 
     Ok(Json(AttestResponse { attestation }))
 }

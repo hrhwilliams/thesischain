@@ -11,30 +11,9 @@ use r2d2::Pool;
 
 use crate::schema::{channel_participant, discord_info, user};
 use crate::{
-    AppError, ChannelId, InboundDiscordInfo, InboundUser, LoginError, NewDiscordInfo, NewUser,
-    RegistrationError, User, UserId, is_valid_nickname,
+    AppError, AuthService, ChannelId, InboundDiscordInfo, InboundUser, LoginError, NewDiscordInfo,
+    NewUser, RegistrationError, User, UserId, is_valid_nickname,
 };
-
-#[async_trait]
-pub trait AuthService: Send + Sync {
-    async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError>;
-    async fn login(&self, username: &str, password: &str) -> Result<User, LoginError>;
-    async fn login_with_discord(&self, info: &InboundDiscordInfo) -> Result<User, LoginError>;
-    async fn register_with_discord(
-        &self,
-        info: InboundDiscordInfo,
-    ) -> Result<User, RegistrationError>;
-    async fn link_account(
-        &self,
-        user: &User,
-        info: InboundDiscordInfo,
-    ) -> Result<(), RegistrationError>;
-    async fn get_user_info(&self, user_id: UserId) -> Result<Option<User>, AppError>;
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError>;
-    async fn get_user_by_discord_id(&self, discord_id: i64) -> Result<Option<User>, AppError>;
-    async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError>;
-    async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError>;
-}
 
 pub struct DbAuthService {
     pool: Pool<ConnectionManager<PgConnection>>,

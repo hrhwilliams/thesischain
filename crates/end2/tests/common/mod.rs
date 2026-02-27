@@ -8,7 +8,8 @@ use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
 use end2::{
     App, AppState, AuthService, ChainDeviceKeyService, ChannelId, DbAuthService,
-    DbMessageRelayService, DbOtkService, DeviceId, InboundUser, MessageId, OAuthHandler, UserId,
+    DbMessageRelayService, DbOtkService, DeviceId, InboundUser, MessageId,
+    OAuthHandler, UserId,
 };
 use miner::http::MinerApi;
 use miner::network::Node;
@@ -173,7 +174,15 @@ pub async fn spawn_app_with_chain() -> ChainTestEnv {
     let device_keys = Arc::new(ChainDeviceKeyService::new(Arc::clone(&chain)));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
     let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-    let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, backend_signing_key.clone());
+    let app_state = AppState::new(
+        auth,
+        device_keys,
+        otks,
+        relay,
+        oauth,
+        pool,
+        backend_signing_key.clone(),
+    );
 
     let app = App::from_state(app_state);
     tokio::spawn(async move { app.run(backend_listener).await });
@@ -243,18 +252,13 @@ pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
 
     // Phase 3: Create each miner node, resolve listen addresses, and connect them
     let mut miner_ports = Vec::with_capacity(n);
-    let mut first_chain = None;
     let mut nodes = Vec::with_capacity(n);
     let mut node_addrs = Vec::with_capacity(n);
 
-    for (i, key) in miner_keys.into_iter().enumerate() {
+    for key in miner_keys {
         let chain = Chain::new(genesis.clone(), Some(backend_verifying_key))
             .expect("Failed to create chain");
         let chain = Arc::new(RwLock::new(chain));
-
-        if i == 0 {
-            first_chain = Some(Arc::clone(&chain));
-        }
 
         let (mut node, tx_sender) =
             Node::new(Arc::clone(&chain), key).expect("Failed to create node");
@@ -342,12 +346,22 @@ pub async fn spawn_app_with_miners(n: usize) -> MultiMinerEnv {
         }
     }
 
-    // Phase 5: Start backend with ChainDeviceKeyService pointing to miner 0's chain
-    let chain_for_backend = first_chain.expect("at least one miner");
-    let device_keys = Arc::new(ChainDeviceKeyService::new(chain_for_backend));
+    // Phase 5: Start backend with HttpDeviceKeyService pointing to miner 0's HTTP API
+    let device_keys = Arc::new(HttpDeviceKeyService::new(format!(
+        "http://localhost:{}",
+        miner_ports[0]
+    )));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
     let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-    let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, backend_signing_key.clone());
+    let app_state = AppState::new(
+        auth,
+        device_keys,
+        otks,
+        relay,
+        oauth,
+        pool,
+        backend_signing_key.clone(),
+    );
 
     let app = App::from_state(app_state);
     tokio::spawn(async move { app.run(backend_listener).await });
@@ -536,11 +550,14 @@ impl ApiClient {
     }
 
     pub async fn upload_otks(&mut self) -> Result<()> {
-        self.post(&format!("/me/device/{}/otks", DeviceId::from(self.device.id())))
-            .json(&self.device.get_otks(10))
-            .send()
-            .await?
-            .error_for_status()?;
+        self.post(&format!(
+            "/me/device/{}/otks",
+            DeviceId::from(self.device.id())
+        ))
+        .json(&self.device.get_otks(10))
+        .send()
+        .await?
+        .error_for_status()?;
 
         Ok(())
     }
@@ -601,7 +618,11 @@ impl ApiClient {
         Ok(response)
     }
 
-    pub async fn get_device_info(&self, user_id: UserId, device_id: DeviceId) -> Result<DeviceInfo> {
+    pub async fn get_device_info(
+        &self,
+        user_id: UserId,
+        device_id: DeviceId,
+    ) -> Result<DeviceInfo> {
         let response = self
             .get(&format!("/user/{}/device/{}", user_id, device_id))
             .send()

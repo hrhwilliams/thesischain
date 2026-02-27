@@ -1,10 +1,10 @@
+use crate::{ApiError, AppError, AppState, DeviceId, InboundOtks, User, UserId};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
-use crate::{ApiError, AppError, AppState, DeviceId, InboundOtks, UserId, User};
 
 #[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]

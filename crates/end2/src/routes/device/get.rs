@@ -1,9 +1,9 @@
+use crate::{ApiError, AppError, AppState, DeviceId, User, UserId};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
-use crate::{ApiError, AppError, AppState, DeviceId, UserId, User};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_device(

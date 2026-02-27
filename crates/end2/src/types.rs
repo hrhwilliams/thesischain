@@ -9,8 +9,16 @@ use crate::AppError;
 macro_rules! prefixed_uuid {
     ($name:ident, $prefix:expr) => {
         #[derive(
-            Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
-            diesel::AsExpression, diesel::deserialize::FromSqlRow,
+            Debug,
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            Hash,
+            PartialOrd,
+            Ord,
+            diesel::AsExpression,
+            diesel::deserialize::FromSqlRow,
         )]
         #[diesel(sql_type = diesel::sql_types::Uuid)]
         pub struct $name(Uuid);
@@ -100,13 +108,28 @@ mod tests {
 
     #[test]
     fn convert_string_to_uuid() {
-        assert_eq!(UserId::try_from("usr_00000000-0000-0000-0000-000000000000").expect("parse").into_inner(), Uuid::nil());
-        assert_eq!(DeviceId::try_from("dev_00000000-0000-0000-0000-000000000000").expect("parse").into_inner(), Uuid::nil());
+        assert_eq!(
+            UserId::try_from("usr_00000000-0000-0000-0000-000000000000")
+                .expect("parse")
+                .into_inner(),
+            Uuid::nil()
+        );
+        assert_eq!(
+            DeviceId::try_from("dev_00000000-0000-0000-0000-000000000000")
+                .expect("parse")
+                .into_inner(),
+            Uuid::nil()
+        );
     }
 
     #[test]
     fn convert_to_raw_uuid() {
-        assert_eq!(UserId::try_from("usr_00000000-0000-0000-0000-000000000000").expect("parse").into_inner(), Uuid::nil());
+        assert_eq!(
+            UserId::try_from("usr_00000000-0000-0000-0000-000000000000")
+                .expect("parse")
+                .into_inner(),
+            Uuid::nil()
+        );
     }
 
     #[test]

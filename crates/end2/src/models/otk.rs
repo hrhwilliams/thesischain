@@ -1,6 +1,6 @@
+use crate::{DeviceId, OtkId};
 use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use crate::{DeviceId, OtkId};
 
 use crate::util::serialize_as_base64;
 

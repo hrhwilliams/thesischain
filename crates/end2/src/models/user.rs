@@ -1,8 +1,8 @@
+use crate::{AppError, RegistrationError, UserId, is_valid_username};
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use diesel::{Insertable, Queryable, Selectable};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
-use crate::{AppError, RegistrationError, UserId, is_valid_username};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::user)]

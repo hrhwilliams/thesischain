@@ -1,5 +1,5 @@
+use crate::{ApiError, AppState, User, UserId, WebSession};
 use axum::{Json, extract::State, response::IntoResponse};
-use crate::{ApiError, AppState, UserId, User, WebSession};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn logout(

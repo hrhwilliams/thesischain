@@ -1,10 +1,10 @@
+use crate::{ApiError, AppState, ExtractError, SessionId, User, UserId};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use crate::{ApiError, AppState, ExtractError, SessionId, UserId, User};
 
 impl User {
     async fn get_user_from_parts(

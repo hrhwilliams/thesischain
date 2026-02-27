@@ -1,9 +1,9 @@
+use crate::{ApiError, AppState, UserId};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
-use crate::{ApiError, AppState, UserId};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_info(

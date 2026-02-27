@@ -1,7 +1,7 @@
+use crate::{ChannelId, DeviceId, MessageId, UserId};
 use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use crate::{ChannelId, DeviceId, MessageId, UserId};
 
 use crate::{InboundMessagePayload, User, serialize_as_base64};
 

@@ -1,8 +1,8 @@
+use crate::SessionId;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SelectableHelper};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use crate::SessionId;
 
 use crate::schema::web_session;
 use crate::{AppError, WebSession};

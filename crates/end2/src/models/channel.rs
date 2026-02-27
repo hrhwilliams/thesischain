@@ -1,6 +1,6 @@
+use crate::{ChannelId, Device, User, UserId};
 use diesel::{Insertable, Queryable, Selectable};
 use serde::Serialize;
-use crate::{ChannelId, Device, User, UserId};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::channel)]

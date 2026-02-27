@@ -1,9 +1,9 @@
+use crate::{ApiError, AppState, ExtractError, SessionId, WebSession};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
-use crate::{ApiError, AppState, ExtractError, SessionId, WebSession};
 
 impl FromRequestParts<AppState> for WebSession {
     type Rejection = ApiError;

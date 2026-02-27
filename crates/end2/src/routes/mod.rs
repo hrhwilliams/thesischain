@@ -6,6 +6,7 @@ mod auth;
 mod channel;
 mod device;
 mod me;
+pub mod miners;
 mod user;
 mod ws;
 
@@ -54,5 +55,7 @@ impl Api {
                 post(device::get_user_device_otk),
             )
             .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
+            .route("/miners/register", post(miners::register))
+            .route("/miners", get(miners::list))
     }
 }

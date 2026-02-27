@@ -6,20 +6,7 @@ use diesel::{
 use r2d2::Pool;
 
 use crate::schema::device;
-use crate::{AppError, Device, DeviceId, InboundDevice, NewDevice, User};
-
-#[async_trait]
-pub trait DeviceKeyService: Send + Sync {
-    async fn new_device_for(&self, user: &User) -> Result<Device, AppError>;
-    async fn get_device(&self, user: &User, device_id: DeviceId) -> Result<Device, AppError>;
-    async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError>;
-    async fn set_device_keys(
-        &self,
-        user: &User,
-        device_id: DeviceId,
-        keys: InboundDevice,
-    ) -> Result<Device, AppError>;
-}
+use crate::{AppError, Device, DeviceId, DeviceKeyService, InboundDevice, NewDevice, User};
 
 pub struct DbDeviceKeyService {
     pool: Pool<ConnectionManager<PgConnection>>,

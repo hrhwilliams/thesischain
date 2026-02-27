@@ -63,6 +63,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    miner (id) {
+        id -> Uuid,
+        multiaddr -> Text,
+    }
+}
+
+diesel::table! {
     one_time_key (id) {
         id -> Uuid,
         device_id -> Uuid,
@@ -106,6 +113,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     discord_info,
     message,
     message_payload,
+    miner,
     one_time_key,
     user,
     web_session,

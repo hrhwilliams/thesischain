@@ -1,9 +1,9 @@
+use crate::{ApiError, AppState, ChannelId, User};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
-use crate::{ApiError, AppState, ChannelId, User};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn get_channel_info(

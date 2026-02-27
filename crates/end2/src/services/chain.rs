@@ -30,7 +30,6 @@ fn device_from_record(r: &DeviceRecord) -> Device {
 }
 
 #[async_trait]
-#[allow(clippy::significant_drop_tightening)]
 impl DeviceKeyService for ChainDeviceKeyService {
     async fn new_device_for(&self, _user: &User) -> Result<Device, AppError> {
         Err(AppError::UserError(

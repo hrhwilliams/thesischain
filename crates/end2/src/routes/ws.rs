@@ -1,3 +1,4 @@
+use crate::DeviceId;
 use crate::{ApiError, AppState, CountedEvent, ReplayRequest, User, WsEvent};
 use axum::{
     extract::{
@@ -9,7 +10,6 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio::time::{Duration, interval, timeout};
-use crate::DeviceId;
 
 #[tracing::instrument(skip(app_state, ws))]
 pub async fn handle_websocket(

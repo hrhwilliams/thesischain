@@ -300,8 +300,8 @@ async fn test_register_without_attestation_rejected() -> Result<()> {
 
     // Create a fake attestation signed by a random key (not the backend key)
     let fake_key = ed25519_dalek::SigningKey::generate(&mut rand_core::OsRng);
-    let fake_attestation =
-        sign_attestation(tu.user_id.into_inner(), tu.device.id(), 0, &fake_key).expect("sign fake attestation");
+    let fake_attestation = sign_attestation(tu.user_id.into_inner(), tu.device.id(), 0, &fake_key)
+        .expect("sign fake attestation");
 
     let tx = sign_transaction(
         Transaction::RegisterDevice {

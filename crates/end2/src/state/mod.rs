@@ -5,6 +5,7 @@ use std::sync::Arc;
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
 use r2d2::Pool;
+use tokio::sync::RwLock;
 
 use crate::services::{AuthService, DeviceKeyService, MessageRelayService, OtkService};
 
@@ -16,6 +17,7 @@ pub struct AppState {
     pub relay: Arc<dyn MessageRelayService>,
     pub oauth: crate::OAuthHandler,
     pub signing_key: Arc<SigningKey>,
+    pub miners: Arc<RwLock<Vec<miner::MinerInfo>>>,
     pool: Pool<ConnectionManager<PgConnection>>,
 }
 
@@ -37,6 +39,7 @@ impl AppState {
             relay,
             oauth,
             signing_key: Arc::new(signing_key),
+            miners: Arc::new(RwLock::new(Vec::new())),
             pool,
         }
     }

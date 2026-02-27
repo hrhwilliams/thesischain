@@ -1,10 +1,10 @@
+use crate::{ApiError, AppState, ChannelId, DeviceId, MessageId, User};
 use axum::{
     Json,
     extract::{Path, Query, State},
     response::IntoResponse,
 };
 use serde::Deserialize;
-use crate::{ApiError, AppState, ChannelId, DeviceId, MessageId, User};
 
 #[derive(Deserialize)]
 pub struct HistoryRequest {

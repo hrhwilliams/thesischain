@@ -10,19 +10,7 @@ use r2d2::Pool;
 use vodozemac::Curve25519PublicKey;
 
 use crate::schema::{device, one_time_key};
-use crate::{AppError, Device, DeviceId, InboundOtks, NewOtk, Otk, User};
-
-#[async_trait]
-pub trait OtkService: Send + Sync {
-    async fn get_otks(&self, device_id: DeviceId) -> Result<Vec<Otk>, AppError>;
-    async fn upload_otks(
-        &self,
-        user: &User,
-        device_id: DeviceId,
-        otks: InboundOtks,
-    ) -> Result<(), AppError>;
-    async fn get_user_otk(&self, user: &User, device_id: DeviceId) -> Result<Otk, AppError>;
-}
+use crate::{AppError, Device, DeviceId, InboundOtks, NewOtk, Otk, OtkService, User};
 
 pub struct DbOtkService {
     pool: Pool<ConnectionManager<PgConnection>>,

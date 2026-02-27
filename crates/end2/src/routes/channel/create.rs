@@ -1,12 +1,13 @@
+use crate::{
+    ApiError, AppError, AppState, ChannelId, InboundChatMessage, MessageReceipt,
+    OutboundChatMessage, User, WsEvent,
+};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
 use serde::Deserialize;
-use crate::{
-    ApiError, AppError, AppState, ChannelId, InboundChatMessage, MessageReceipt, OutboundChatMessage, User, WsEvent,
-};
 
 #[derive(Deserialize)]
 pub struct ChannelWith {

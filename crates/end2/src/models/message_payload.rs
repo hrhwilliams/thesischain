@@ -1,7 +1,7 @@
+use crate::{DeviceId, MessageId};
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{Insertable, Queryable, Selectable};
 use serde::Deserialize;
-use crate::{DeviceId, MessageId};
 
 use crate::AppError;
 
