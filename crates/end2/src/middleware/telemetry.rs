@@ -1,11 +1,7 @@
 use std::sync::OnceLock;
 
 use axum::{body::Body, extract::MatchedPath, http::Request, middleware::Next, response::Response};
-use opentelemetry::{
-    KeyValue,
-    metrics::Histogram,
-    propagation::TextMapPropagator,
-};
+use opentelemetry::{KeyValue, metrics::Histogram, propagation::TextMapPropagator};
 use opentelemetry_http::HeaderExtractor;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tracing::Instrument;
@@ -27,9 +23,7 @@ pub async fn telemetry(request: Request<Body>, next: Next) -> Response {
             format!(
                 "{}:{};",
                 s.0,
-                s.1.to_str()
-                    .expect("should be string")
-                    .to_string()
+                s.1.to_str().expect("should be string").to_string()
             )
         })
         .collect();

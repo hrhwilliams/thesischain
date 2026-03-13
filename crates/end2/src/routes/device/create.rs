@@ -1,43 +1,41 @@
-use crate::{ApiError, AppError, AppState, DeviceId, InboundDevice, User};
+use crate::{ApiError, AppError, DeviceId, DeviceKeyService, InboundDevice, User};
 use axum::{
     Json,
     extract::{Path, State},
     response::IntoResponse,
 };
 
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(device_keys))]
 pub async fn new_device(
-    State(app_state): State<AppState>,
+    State(device_keys): State<impl DeviceKeyService>,
     user: User,
 ) -> Result<impl IntoResponse, ApiError> {
-    let new_device = app_state.device_keys.new_device_for(&user).await?;
+    let new_device = device_keys.new_device_for(&user).await?;
     Ok(Json(new_device))
 }
 
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(device_keys))]
 pub async fn upload_keys(
-    State(app_state): State<AppState>,
+    State(device_keys): State<impl DeviceKeyService>,
     user: User,
     Path(device_id): Path<DeviceId>,
-    Json(device_keys): Json<InboundDevice>,
+    Json(inbound_device_keys): Json<InboundDevice>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let device = app_state
-        .device_keys
-        .set_device_keys(&user, device_id, device_keys)
+    let device = device_keys
+        .set_device_keys(&user, device_id, inbound_device_keys)
         .await?;
     Ok(Json(device))
 }
 
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(device_keys))]
 pub async fn upload_keys_me(
-    State(app_state): State<AppState>,
+    State(device_keys): State<impl DeviceKeyService>,
     user: User,
-    Json(device_keys): Json<InboundDevice>,
+    Json(inbound_device_keys): Json<InboundDevice>,
 ) -> Result<impl IntoResponse, ApiError> {
-    if let Some(device_id) = device_keys.device_id {
-        let device = app_state
-            .device_keys
-            .set_device_keys(&user, device_id, device_keys)
+    if let Some(device_id) = inbound_device_keys.device_id {
+        let device = device_keys
+            .set_device_keys(&user, device_id, inbound_device_keys)
             .await?;
         Ok(Json(device))
     } else {

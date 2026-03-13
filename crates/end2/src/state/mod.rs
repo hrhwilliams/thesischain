@@ -1,6 +1,3 @@
-mod session;
-
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use diesel::{PgConnection, r2d2::ConnectionManager};
@@ -9,7 +6,7 @@ use r2d2::Pool;
 use tokio::sync::{RwLock, broadcast};
 
 use crate::{
-    OAuthHandler,
+    WebSessionService,
     services::{AuthService, DeviceKeyService, MessageRelayService, OtkService},
 };
 
@@ -17,12 +14,18 @@ use crate::{
 pub enum AppEvent {}
 
 #[derive(Clone)]
-pub struct AppState<A: AuthService> {
+pub struct AppState<
+    A: AuthService,
+    D: DeviceKeyService,
+    O: OtkService,
+    R: MessageRelayService,
+    W: WebSessionService,
+> {
     pub auth: A,
-    pub device_keys: Arc<dyn DeviceKeyService>,
-    pub otks: Arc<dyn OtkService>,
-    pub relay: Arc<dyn MessageRelayService>,
-    pub oauth: HashMap<String, OAuthHandler>,
+    pub device_keys: D,
+    pub otks: O,
+    pub relay: R,
+    pub web_sessions: W,
     pub signing_key: Arc<SigningKey>,
     pub miners: Arc<RwLock<Vec<miner::MinerInfo>>>,
     pool: Pool<ConnectionManager<PgConnection>>,
@@ -30,14 +33,21 @@ pub struct AppState<A: AuthService> {
     broadcaster: broadcast::Sender<AppEvent>,
 }
 
-impl<A: AuthService> AppState<A> {
+impl<
+    A: AuthService,
+    D: DeviceKeyService,
+    O: OtkService,
+    R: MessageRelayService,
+    W: WebSessionService,
+> AppState<A, D, O, R, W>
+{
     #[must_use]
     pub fn new(
         auth: A,
-        device_keys: Arc<dyn DeviceKeyService>,
-        otks: Arc<dyn OtkService>,
-        relay: Arc<dyn MessageRelayService>,
-        oauth: HashMap<String, OAuthHandler>,
+        device_keys: D,
+        otks: O,
+        relay: R,
+        web_sessions: W,
         pool: Pool<ConnectionManager<PgConnection>>,
         signing_key: SigningKey,
     ) -> Self {
@@ -48,7 +58,7 @@ impl<A: AuthService> AppState<A> {
             device_keys,
             otks,
             relay,
-            oauth,
+            web_sessions,
             signing_key: Arc::new(signing_key),
             miners: Arc::new(RwLock::new(Vec::new())),
             pool,
@@ -66,9 +76,5 @@ impl<A: AuthService> AppState<A> {
 
     pub fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.broadcaster.subscribe()
-    }
-
-    pub fn get_oauth_handler(&self, handler_name: &str) -> Option<&OAuthHandler> {
-        self.oauth.get(handler_name)
     }
 }

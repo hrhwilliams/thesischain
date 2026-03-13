@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::{AppError, Channel, ChannelId, ChannelInfo, ChatMessage, DeviceId, InboundChatMessage, MessageId, MessagePayload, OutboundChatMessage, User, WsEvent};
+use crate::{
+    AppError, Channel, ChannelId, ChannelInfo, ChatMessage, DeviceId, InboundChatMessage,
+    MessageId, MessagePayload, OutboundChatMessage, User, WsEvent,
+};
 
 #[async_trait]
 pub trait MessageRelayService: Send + Sync {

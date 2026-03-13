@@ -1,4 +1,4 @@
-use crate::{ApiError, AppError, AppState, DeviceId, InboundOtks, User, UserId};
+use crate::{ApiError, AppError, AuthService, DeviceId, InboundOtks, OtkService, User, UserId};
 use axum::{
     Json,
     extract::{Path, State},
@@ -7,45 +7,43 @@ use axum::{
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 
 #[allow(clippy::used_underscore_binding)]
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(otks))]
 pub async fn get_otks(
-    State(app_state): State<AppState>,
+    State(otks): State<impl OtkService>,
     _user: User,
     Path(device_id): Path<DeviceId>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let otks = app_state
-        .otks
+    Ok(Json(serde_json::json!({ "otks": otks
         .get_otks(device_id)
         .await?
         .into_iter()
         .map(|k| BASE64_STANDARD_NO_PAD.encode(&k.otk))
-        .collect::<Vec<String>>();
-    Ok(Json(serde_json::json!({ "otks": otks })))
+        .collect::<Vec<String>>() })))
 }
 
-#[tracing::instrument(skip(app_state, otks))]
+#[tracing::instrument(skip(otks, inbound_otks))]
 pub async fn upload_otks(
-    State(app_state): State<AppState>,
+    State(otks): State<impl OtkService>,
     user: User,
     Path(device_id): Path<DeviceId>,
-    Json(otks): Json<InboundOtks>,
+    Json(inbound_otks): Json<InboundOtks>,
 ) -> Result<impl IntoResponse, ApiError> {
-    app_state.otks.upload_otks(&user, device_id, otks).await?;
+    otks.upload_otks(&user, device_id, inbound_otks).await?;
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 
 #[allow(clippy::used_underscore_binding)]
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(auth, otks))]
 pub async fn get_user_device_otk(
-    State(app_state): State<AppState>,
+    State(auth): State<impl AuthService>,
+    State(otks): State<impl OtkService>,
     _user: User,
     Path((user_id, device_id)): Path<(UserId, DeviceId)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = app_state
-        .auth
+    let user = auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    Ok(Json(app_state.otks.get_user_otk(&user, device_id).await?))
+    Ok(Json(otks.get_user_otk(&user, device_id).await?))
 }

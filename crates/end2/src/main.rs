@@ -5,9 +5,9 @@ use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
 use end2::{
-    App, AppState, AuthService, DbAuthService, DbDeviceKeyService,
+    App, AppState, AuthService, CookieWebSessionService, DbAuthService, DbDeviceKeyService,
     DbMessageRelayService, DbOtkService, DeviceKeyService, MessageRelayService, OAuthHandler,
-    OAuthInfo, OtkService,
+    OAuthInfo, OtkService, WebSessionService,
 };
 use mimalloc::MiMalloc;
 use opentelemetry::trace::TracerProvider;
@@ -159,6 +159,7 @@ async fn main() -> Result<(), std::io::Error> {
             .key_directory(DbDeviceKeyService::new)
             .otk_directory(DbOtkService::new)
             .message_relay(DbMessageRelayService::new)
+            .web_session_service(CookieWebSessionService::new)
             .with_oauth_handler("google", google_oauth)
             .with_oauth_handler("discord", discord_oauth)
             .build();
@@ -174,10 +175,16 @@ async fn main() -> Result<(), std::io::Error> {
 struct AppStateBuilder {
     pool: Pool<ConnectionManager<PgConnection>>,
     signing_key: SigningKey,
-    auth: Option<A>,
-    key: Option<Arc<dyn DeviceKeyService>>,
-    otk: Option<Arc<dyn OtkService>>,
-    relay: Option<Arc<dyn MessageRelayService>>,
+    auth_constructor: Option<
+        fn(
+            Pool<ConnectionManager<PgConnection>>,
+            HashMap<String, OAuthHandler>,
+        ) -> impl AuthService,
+    >,
+    key: Option<impl DeviceKeyService>,
+    otk: Option<impl OtkService>,
+    relay: Option<impl MessageRelayService>,
+    web_sessions: Option<impl WebSessionService>,
     oauth: HashMap<String, OAuthHandler>,
 }
 
@@ -186,19 +193,20 @@ impl AppStateBuilder {
         Self {
             pool,
             signing_key,
-            auth: None,
+            auth_constructor: None,
             key: None,
             otk: None,
             relay: None,
+            web_sessions: None,
             oauth: HashMap::new(),
         }
     }
 
     fn auth_service<T: AuthService + 'static>(
         mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>, HashMap<String, OAuthHandler>) -> T,
     ) -> Self {
-        self.auth = Some(constructor(self.pool.clone()));
+        self.auth_constructor = Some(constructor);
         self
     }
 
@@ -206,7 +214,7 @@ impl AppStateBuilder {
         mut self,
         constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
     ) -> Self {
-        self.key = Some(Arc::new(constructor(self.pool.clone())));
+        self.key = Some(constructor(self.pool.clone()));
         self
     }
 
@@ -214,7 +222,7 @@ impl AppStateBuilder {
         mut self,
         constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
     ) -> Self {
-        self.otk = Some(Arc::new(constructor(self.pool.clone())));
+        self.otk = Some(constructor(self.pool.clone()));
         self
     }
 
@@ -222,7 +230,15 @@ impl AppStateBuilder {
         mut self,
         constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
     ) -> Self {
-        self.relay = Some(Arc::new(constructor(self.pool.clone())));
+        self.relay = Some(constructor(self.pool.clone()));
+        self
+    }
+
+    fn web_session_service<W: WebSessionService + 'static>(
+        mut self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> W,
+    ) -> Self {
+        self.web_sessions = Some(constructor(self.pool.clone()));
         self
     }
 
@@ -233,11 +249,11 @@ impl AppStateBuilder {
 
     fn build(self) -> AppState {
         AppState::new(
-            self.auth.expect("auth service not set"),
+            self.auth_constructor.expect("auth service not set")(self.pool.clone(), self.oauth),
             self.key.expect("key directory not set"),
             self.otk.expect("otk directory not set"),
             self.relay.expect("message relay not set"),
-            self.oauth,
+            self.web_sessions.expect("web session service not set"),
             self.pool,
             self.signing_key,
         )

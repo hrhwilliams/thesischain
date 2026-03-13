@@ -1,17 +1,41 @@
-use crate::{AuthService, SessionId};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SelectableHelper};
+use async_trait::async_trait;
+use diesel::r2d2::ConnectionManager;
+use diesel::{ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
+use r2d2::Pool;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::schema::web_session;
-use crate::{AppError, WebSession};
+use crate::{AppError, WebSession, SessionId, WebSessionService};
 
-use super::AppState;
+#[derive(Clone)]
+pub struct CookieWebSessionService {
+    pool: Pool<ConnectionManager<PgConnection>>,
+}
 
-impl<A: AuthService> AppState<A> {
+impl CookieWebSessionService {
+    #[must_use]
+    pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
+        Self {
+            pool,
+        }
+    }
+
     #[tracing::instrument(skip(self))]
-    pub async fn new_session(&self) -> Result<WebSession, AppError> {
+    fn get_conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
+        self.pool
+            .get()
+            .map_err(|e| AppError::PoolError(e.to_string()))
+    }
+}
+
+#[async_trait]
+impl WebSessionService for CookieWebSessionService {
+    #[tracing::instrument(skip(self))]
+    async fn new_session(&self) -> Result<WebSession, AppError> {
         let mut conn = self.get_conn()?;
 
         let session = tokio::task::spawn_blocking(move || {
@@ -26,7 +50,7 @@ impl<A: AuthService> AppState<A> {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError> {
         let mut conn = self.get_conn()?;
 
         let session = tokio::task::spawn_blocking(move || {
@@ -41,7 +65,7 @@ impl<A: AuthService> AppState<A> {
         Ok(session)
     }
 
-    pub async fn insert_into_session<T: Serialize>(
+    async fn insert_into_session<T: Serialize>(
         &self,
         web_session: WebSession,
         key: String,
@@ -71,7 +95,7 @@ impl<A: AuthService> AppState<A> {
         Ok(web_session)
     }
 
-    pub async fn get_from_session<T: DeserializeOwned>(
+    async fn get_from_session<T: DeserializeOwned>(
         &self,
         web_session: &WebSession,
         key: &str,
@@ -99,7 +123,7 @@ impl<A: AuthService> AppState<A> {
         Ok(value)
     }
 
-    pub async fn remove_from_session<T: DeserializeOwned>(
+    async fn remove_from_session<T: DeserializeOwned>(
         &self,
         web_session: WebSession,
         key: &str,

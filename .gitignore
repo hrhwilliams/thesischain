@@ -1,3 +1,4 @@
 target/
 config/
 .env
+load_test/setup/credentials.json

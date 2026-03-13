@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::num::ParseIntError;
 
 use argon2::password_hash::Encoding;
@@ -13,17 +14,21 @@ use secrecy::{ExposeSecret, SecretString};
 use crate::schema::{channel_participant, discord_info, user};
 use crate::{
     AppError, AuthService, ChannelId, InboundDiscordInfo, InboundUser, LoginError, NewDiscordInfo,
-    NewUser, RegistrationError, User, UserId, is_valid_nickname,
+    NewUser, OAuthHandler, RegistrationError, User, UserId, is_valid_nickname,
 };
 
 pub struct DbAuthService {
     pool: Pool<ConnectionManager<PgConnection>>,
+    oauth: HashMap<String, OAuthHandler>,
 }
 
 impl DbAuthService {
     #[must_use]
-    pub const fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
-        Self { pool }
+    pub const fn new(
+        pool: Pool<ConnectionManager<PgConnection>>,
+        oauth: HashMap<String, OAuthHandler>,
+    ) -> Self {
+        Self { pool, oauth }
     }
 
     #[tracing::instrument(skip(self))]
@@ -231,5 +236,10 @@ impl AuthService for DbAuthService {
         .await??;
 
         Ok(users)
+    }
+
+    #[tracing::instrument(skip(self))]
+    fn get_oauth_handler(&self, handler: &str) -> Option<&OAuthHandler> {
+        self.oauth.get(handler)
     }
 }

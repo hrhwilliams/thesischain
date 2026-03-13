@@ -12,6 +12,7 @@ pub async fn get_discord_oauth_url<A: AuthService>(
     web_session: WebSession,
 ) -> Result<impl IntoResponse, ApiError> {
     let (discord_url, csrf_token, pkce_verifier) = app_state
+        .auth
         .get_oauth_handler("discord")
         .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
         .generate_oauth_url()
@@ -57,12 +58,14 @@ pub async fn discord_redirect<A: AuthService>(
         .await?
         .ok_or_else(|| AppError::ValueError("missing value".to_string()))?;
     let token = app_state
+        .auth
         .get_oauth_handler("discord")
         .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
         .get_discord_token(code, state, csrf_token, pkce_verifier)
         .await
         .map_err(AppError::from)?;
     let discord_info = app_state
+        .auth
         .get_oauth_handler("discord")
         .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
         .get_discord_info(&token)

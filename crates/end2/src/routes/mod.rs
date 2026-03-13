@@ -6,7 +6,6 @@ mod auth;
 mod channel;
 mod device;
 mod me;
-pub mod miners;
 mod user;
 mod ws;
 

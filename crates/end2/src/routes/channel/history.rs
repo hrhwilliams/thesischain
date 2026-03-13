@@ -1,4 +1,4 @@
-use crate::{ApiError, AppState, ChannelId, DeviceId, MessageId, User};
+use crate::{ApiError, ChannelId, DeviceId, MessageId, MessageRelayService, User};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -12,16 +12,15 @@ pub struct HistoryRequest {
     pub after: Option<MessageId>,
 }
 
-#[tracing::instrument(skip(app_state))]
+#[tracing::instrument(skip(relay))]
 pub async fn get_channel_history(
-    State(app_state): State<AppState>,
+    State(relay): State<impl MessageRelayService>,
     user: User,
     Path(channel_id): Path<ChannelId>,
     Query(HistoryRequest { device, after }): Query<HistoryRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(
-        app_state
-            .relay
+        relay
             .get_channel_history(&user, channel_id, device, after)
             .await?,
     ))
