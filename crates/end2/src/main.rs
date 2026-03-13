@@ -174,7 +174,7 @@ async fn main() -> Result<(), std::io::Error> {
 struct AppStateBuilder {
     pool: Pool<ConnectionManager<PgConnection>>,
     signing_key: SigningKey,
-    auth: Option<Arc<dyn AuthService>>,
+    auth: Option<A>,
     key: Option<Arc<dyn DeviceKeyService>>,
     otk: Option<Arc<dyn OtkService>>,
     relay: Option<Arc<dyn MessageRelayService>>,
@@ -198,7 +198,7 @@ impl AppStateBuilder {
         mut self,
         constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
     ) -> Self {
-        self.auth = Some(Arc::new(constructor(self.pool.clone())));
+        self.auth = Some(constructor(self.pool.clone()));
         self
     }
 

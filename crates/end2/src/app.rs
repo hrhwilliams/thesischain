@@ -6,6 +6,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::Api;
 use crate::AppState;
+use crate::AuthService;
 use crate::session::create_session;
 use crate::telemetry;
 
@@ -33,7 +34,7 @@ pub struct App {
 
 impl App {
     #[must_use]
-    pub fn new(app_state: AppState) -> Self {
+    pub fn new<A: AuthService + Clone>(app_state: AppState<A>) -> Self {
         let router = axum::Router::new()
             .nest("/api", Api::router())
             .layer(middleware::from_fn_with_state(

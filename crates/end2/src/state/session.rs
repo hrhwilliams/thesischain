@@ -1,4 +1,4 @@
-use crate::SessionId;
+use crate::{AuthService, SessionId};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SelectableHelper};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -9,7 +9,7 @@ use crate::{AppError, WebSession};
 
 use super::AppState;
 
-impl AppState {
+impl<A: AuthService> AppState<A> {
     #[tracing::instrument(skip(self))]
     pub async fn new_session(&self) -> Result<WebSession, AppError> {
         let mut conn = self.get_conn()?;

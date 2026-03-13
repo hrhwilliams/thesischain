@@ -4,11 +4,11 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{ApiError, AppError, AppState, User, WebSession};
+use crate::{ApiError, AppError, AppState, AuthService, User, WebSession};
 
 #[tracing::instrument(skip(app_state))]
-pub async fn get_discord_oauth_url(
-    State(app_state): State<AppState>,
+pub async fn get_discord_oauth_url<A: AuthService>(
+    State(app_state): State<AppState<A>>,
     web_session: WebSession,
 ) -> Result<impl IntoResponse, ApiError> {
     let (discord_url, csrf_token, pkce_verifier) = app_state
@@ -42,8 +42,8 @@ pub struct OAuthResponse {
 
 #[allow(clippy::too_many_lines)]
 #[tracing::instrument(skip(app_state))]
-pub async fn discord_redirect(
-    State(app_state): State<AppState>,
+pub async fn discord_redirect<A: AuthService>(
+    State(app_state): State<AppState<A>>,
     web_session: WebSession,
     user: Option<User>,
     Query(OAuthResponse { code, state }): Query<OAuthResponse>,

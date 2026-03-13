@@ -17,8 +17,8 @@ use crate::{
 pub enum AppEvent {}
 
 #[derive(Clone)]
-pub struct AppState {
-    pub auth: Arc<dyn AuthService>,
+pub struct AppState<A: AuthService> {
+    pub auth: A,
     pub device_keys: Arc<dyn DeviceKeyService>,
     pub otks: Arc<dyn OtkService>,
     pub relay: Arc<dyn MessageRelayService>,
@@ -30,10 +30,10 @@ pub struct AppState {
     broadcaster: broadcast::Sender<AppEvent>,
 }
 
-impl AppState {
+impl<A: AuthService> AppState<A> {
     #[must_use]
     pub fn new(
-        auth: Arc<dyn AuthService>,
+        auth: A,
         device_keys: Arc<dyn DeviceKeyService>,
         otks: Arc<dyn OtkService>,
         relay: Arc<dyn MessageRelayService>,
