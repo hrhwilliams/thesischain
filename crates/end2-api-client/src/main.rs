@@ -78,10 +78,7 @@ impl ApiClient {
             response
         };
 
-        let user_info = response
-            .error_for_status()?
-            .json::<UserInfo>()
-            .await?;
+        let user_info = response.error_for_status()?.json::<UserInfo>().await?;
 
         let device = if device.is_some() {
             // SAFETY: checked in if statement above
@@ -242,23 +239,24 @@ impl ApiClient {
             let device_ids = self.get_user_devices(participant.id).await?;
 
             for device in device_ids {
-                let (session, payload) = if let Some(session) = self.sessions.remove(&device.device_id) {
-                    if session.has_received_message() {
-                        self.device.encrypt(session, &device, plaintext)
+                let (session, payload) =
+                    if let Some(session) = self.sessions.remove(&device.device_id) {
+                        if session.has_received_message() {
+                            self.device.encrypt(session, &device, plaintext)
+                        } else {
+                            panic!("Must wait for other user to reply")
+                        }
                     } else {
-                        panic!("Must wait for other user to reply")
-                    }
-                } else {
-                    let otk = self
-                        .get_device_otk(participant.id, device.device_id)
-                        .await?;
+                        let otk = self
+                            .get_device_otk(participant.id, device.device_id)
+                            .await?;
 
-                    self.device.encrypt_otk(
-                        &device,
-                        plaintext,
-                        Curve25519PublicKey::from_base64(&otk.otk)?,
-                    )
-                }?;
+                        self.device.encrypt_otk(
+                            &device,
+                            plaintext,
+                            Curve25519PublicKey::from_base64(&otk.otk)?,
+                        )
+                    }?;
 
                 self.sessions.insert(device.device_id, session);
                 payloads.push(payload);

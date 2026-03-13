@@ -5,6 +5,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use base64::{Engine, prelude::BASE64_STANDARD};
+use secrecy::SecretString;
 
 impl User {
     async fn get_user_from_parts(
@@ -70,7 +71,7 @@ impl User {
 
             let user = app_state
                 .auth
-                .login(username, password)
+                .login(username, SecretString::from(password))
                 .await
                 .map_err(|_| ExtractError::NoUser)?;
 

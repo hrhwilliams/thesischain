@@ -18,6 +18,7 @@ impl DbDeviceKeyService {
         Self { pool }
     }
 
+    #[tracing::instrument(skip(self))]
     fn get_conn(
         &self,
     ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
@@ -76,6 +77,7 @@ impl DeviceKeyService for DbDeviceKeyService {
             .map_err(AppError::from)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_device_keys(
         &self,
         user: &User,

@@ -98,10 +98,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
+        .with_max_level(tracing::Level::DEBUG)
         .init();
 
     let cli = Cli::parse();

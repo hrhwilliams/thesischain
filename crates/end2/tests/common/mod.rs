@@ -8,8 +8,7 @@ use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
 use end2::{
     App, AppState, AuthService, ChainDeviceKeyService, ChannelId, DbAuthService,
-    DbMessageRelayService, DbOtkService, DeviceId, InboundUser, MessageId,
-    OAuthHandler, UserId,
+    DbMessageRelayService, DbOtkService, DeviceId, InboundUser, MessageId, OAuthHandler, UserId,
 };
 use miner::http::MinerApi;
 use miner::network::Node;

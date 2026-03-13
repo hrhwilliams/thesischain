@@ -1,4 +1,5 @@
 use axum::{Json, extract::State, response::IntoResponse};
+use secrecy::SecretString;
 use serde::Deserialize;
 
 use crate::{ApiError, AppState, WebSession};
@@ -6,7 +7,7 @@ use crate::{ApiError, AppState, WebSession};
 #[derive(Deserialize)]
 pub struct LoginRequest {
     pub username: String,
-    pub password: String,
+    pub password: SecretString,
 }
 
 #[tracing::instrument(skip(app_state, password))]
@@ -15,7 +16,7 @@ pub async fn login(
     web_session: WebSession,
     Json(LoginRequest { username, password }): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = app_state.auth.login(&username, &password).await?;
+    let user = app_state.auth.login(&username, password).await?;
     app_state
         .insert_into_session(web_session, "user_id".to_string(), user.id)
         .await?;

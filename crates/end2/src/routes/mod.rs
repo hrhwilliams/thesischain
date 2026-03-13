@@ -20,7 +20,9 @@ impl Api {
             .route("/auth/logout", post(auth::logout))
             .route("/auth/attest", post(auth::attest))
             .route("/auth/discord", get(auth::get_discord_oauth_url))
-            .route("/auth/redirect", get(auth::discord_redirect))
+            .route("/auth/google", get(auth::get_google_oauth_url))
+            .route("/auth/redirect/google", get(auth::google_redirect))
+            .route("/auth/redirect/discord", get(auth::discord_redirect))
             .route("/channel", post(channel::create_channel_with))
             .route("/channel/{channel_id}", get(channel::get_channel_info))
             .route(

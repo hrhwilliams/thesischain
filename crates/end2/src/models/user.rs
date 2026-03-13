@@ -2,6 +2,7 @@ use crate::{AppError, RegistrationError, UserId, is_valid_username};
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use diesel::{Insertable, Queryable, Selectable};
 use rand_core::OsRng;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
@@ -26,14 +27,15 @@ impl PartialEq for User {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewUser {
     pub username: String,
-    pub password: Option<String>,
+    #[diesel(column_name = password)]
+    pub password_hash: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct InboundUser {
     pub username: String,
-    pub password: String,
-    pub confirm_password: String,
+    pub password: SecretString,
+    pub confirm_password: SecretString,
 }
 
 impl TryFrom<InboundUser> for NewUser {
@@ -43,20 +45,20 @@ impl TryFrom<InboundUser> for NewUser {
         if !is_valid_username(&inbound.username) {
             return Err(RegistrationError::InvalidUsernameOrPassword);
         }
-        if inbound.password != inbound.confirm_password {
+        if inbound.password.expose_secret() != inbound.confirm_password.expose_secret() {
             return Err(RegistrationError::PasswordMismatch);
         }
 
         let salt = SaltString::generate(&mut OsRng);
 
         let hash = Argon2::default()
-            .hash_password(inbound.password.as_bytes(), &salt)
+            .hash_password(inbound.password.expose_secret().as_bytes(), &salt)
             .map_err(|e| RegistrationError::from(AppError::ArgonError(e.to_string())))?
             .to_string();
 
         Ok(Self {
             username: inbound.username.trim().to_string(),
-            password: Some(hash),
+            password_hash: Some(hash),
         })
     }
 }
@@ -68,8 +70,8 @@ mod tests {
     fn make_inbound(username: &str, password: &str, confirm: &str) -> InboundUser {
         InboundUser {
             username: username.to_string(),
-            password: password.to_string(),
-            confirm_password: confirm.to_string(),
+            password: SecretString::from(password.to_string()),
+            confirm_password: SecretString::from(confirm.to_string()),
         }
     }
 
@@ -78,7 +80,7 @@ mod tests {
         let inbound = make_inbound("testuser", "password123", "password123");
         let new_user = NewUser::try_from(inbound).expect("should succeed");
         assert_eq!(new_user.username, "testuser");
-        assert!(new_user.password.is_some());
+        assert!(new_user.password_hash.is_some());
     }
 
     #[test]

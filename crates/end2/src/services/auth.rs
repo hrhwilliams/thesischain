@@ -8,6 +8,7 @@ use diesel::{
     r2d2::ConnectionManager,
 };
 use r2d2::Pool;
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::schema::{channel_participant, discord_info, user};
 use crate::{
@@ -25,6 +26,7 @@ impl DbAuthService {
         Self { pool }
     }
 
+    #[tracing::instrument(skip(self))]
     fn get_conn(
         &self,
     ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
@@ -36,6 +38,7 @@ impl DbAuthService {
 
 #[async_trait]
 impl AuthService for DbAuthService {
+    #[tracing::instrument(skip(self))]
     async fn get_user_info(&self, user_id: UserId) -> Result<Option<User>, AppError> {
         let mut conn = self.get_conn()?;
 
@@ -86,7 +89,7 @@ impl AuthService for DbAuthService {
     }
 
     #[tracing::instrument(skip(self, password))]
-    async fn login(&self, username: &str, password: &str) -> Result<User, LoginError> {
+    async fn login(&self, username: &str, password: SecretString) -> Result<User, LoginError> {
         tracing::info!("logging in user");
         let user = self
             .get_user_by_username(username)
@@ -100,7 +103,7 @@ impl AuthService for DbAuthService {
             .map_err(|e| AppError::ArgonError(e.to_string()))?;
 
         let is_correct = Argon2::default()
-            .verify_password(password.as_bytes(), &password_hash)
+            .verify_password(password.expose_secret().as_bytes(), &password_hash)
             .is_ok();
 
         if is_correct {
@@ -135,7 +138,7 @@ impl AuthService for DbAuthService {
 
         let new_user = NewUser {
             username: format!("{}@discord", inbound.username),
-            password: None,
+            password_hash: None,
         };
 
         let user = diesel::insert_into(user::table)
@@ -187,6 +190,7 @@ impl AuthService for DbAuthService {
         Ok(user)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn change_nickname(&self, user: &User, nickname: &str) -> Result<(), AppError> {
         if !is_valid_nickname(nickname) {
             return Err(AppError::UserError("bad username".to_string()));
@@ -206,6 +210,7 @@ impl AuthService for DbAuthService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_known_users(&self, user: &User) -> Result<Vec<User>, AppError> {
         let mut conn = self.get_conn()?;
 

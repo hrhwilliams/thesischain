@@ -12,7 +12,8 @@ pub async fn get_discord_oauth_url(
     web_session: WebSession,
 ) -> Result<impl IntoResponse, ApiError> {
     let (discord_url, csrf_token, pkce_verifier) = app_state
-        .oauth
+        .get_oauth_handler("discord")
+        .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
         .generate_oauth_url()
         .map_err(AppError::from)?;
     let web_session = app_state
@@ -56,17 +57,19 @@ pub async fn discord_redirect(
         .await?
         .ok_or_else(|| AppError::ValueError("missing value".to_string()))?;
     let token = app_state
-        .oauth
-        .get_token(code, state, csrf_token, pkce_verifier)
+        .get_oauth_handler("discord")
+        .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
+        .get_discord_token(code, state, csrf_token, pkce_verifier)
         .await
         .map_err(AppError::from)?;
     let discord_info = app_state
-        .oauth
+        .get_oauth_handler("discord")
+        .ok_or(AppError::ValueError("no discord OAuth handler".to_string()))?
         .get_discord_info(&token)
         .await
         .map_err(AppError::from)?;
 
-    if user.is_some() {
+    if let Some(user) = user {
         tracing::info!("linking account");
         app_state.auth.link_account(&user, discord_info).await?;
     } else {

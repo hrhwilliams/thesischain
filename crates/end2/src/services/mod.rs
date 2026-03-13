@@ -5,6 +5,7 @@ mod otk;
 mod relay;
 
 use async_trait::async_trait;
+use secrecy::SecretString;
 use tokio::sync::{broadcast, mpsc};
 
 pub use auth::*;
@@ -23,7 +24,7 @@ use crate::{
 #[async_trait]
 pub trait AuthService: Send + Sync {
     async fn register_user(&self, inbound: InboundUser) -> Result<User, RegistrationError>;
-    async fn login(&self, username: &str, password: &str) -> Result<User, LoginError>;
+    async fn login(&self, username: &str, password: SecretString) -> Result<User, LoginError>;
     async fn login_with_discord(&self, info: &InboundDiscordInfo) -> Result<User, LoginError>;
     async fn register_with_discord(
         &self,

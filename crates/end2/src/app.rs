@@ -1,21 +1,13 @@
-use std::sync::Arc;
-
 use axum::http::Method;
 use axum::http::header;
 use axum::middleware;
-use diesel::PgConnection;
-use diesel::r2d2::ConnectionManager;
-use ed25519_dalek::SigningKey;
-use r2d2::Pool;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
 
 use crate::Api;
 use crate::AppState;
-use crate::OAuthHandler;
-use crate::services::{DbAuthService, DbDeviceKeyService, DbMessageRelayService, DbOtkService};
 use crate::session::create_session;
+use crate::telemetry;
 
 /// flow
 /// - client registers username and x25519/ed25519 key bundle
@@ -41,27 +33,14 @@ pub struct App {
 
 impl App {
     #[must_use]
-    pub fn new(
-        oauth: OAuthHandler,
-        pool: Pool<ConnectionManager<PgConnection>>,
-        signing_key: SigningKey,
-    ) -> Self {
-        let auth = Arc::new(DbAuthService::new(pool.clone()));
-        let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone()));
-        let otks = Arc::new(DbOtkService::new(pool.clone()));
-        let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
-        let app_state = AppState::new(auth, device_keys, otks, relay, oauth, pool, signing_key);
-        Self::from_state(app_state)
-    }
-
-    #[must_use]
-    pub fn from_state(app_state: AppState) -> Self {
+    pub fn new(app_state: AppState) -> Self {
         let router = axum::Router::new()
             .nest("/api", Api::router())
             .layer(middleware::from_fn_with_state(
                 app_state.clone(),
                 create_session,
             ))
+            .layer(middleware::from_fn(telemetry))
             .layer(
                 CorsLayer::new()
                     .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
@@ -72,7 +51,6 @@ impl App {
                     ])
                     .allow_credentials(true),
             )
-            .layer(TraceLayer::new_for_http())
             .with_state(app_state);
 
         Self { router }

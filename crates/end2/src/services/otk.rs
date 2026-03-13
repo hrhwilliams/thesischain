@@ -22,6 +22,7 @@ impl DbOtkService {
         Self { pool }
     }
 
+    #[tracing::instrument(skip(self))]
     fn get_conn(
         &self,
     ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
@@ -33,6 +34,7 @@ impl DbOtkService {
 
 #[async_trait]
 impl OtkService for DbOtkService {
+    #[tracing::instrument(skip(self))]
     async fn get_otks(&self, device_id: DeviceId) -> Result<Vec<Otk>, AppError> {
         let mut conn = self.get_conn()?;
 
@@ -146,6 +148,7 @@ impl OtkService for DbOtkService {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_user_otk(&self, user: &User, device_id: DeviceId) -> Result<Otk, AppError> {
         let mut conn = self.get_conn()?;
         let user_id = user.id;

@@ -8,7 +8,10 @@ use vodozemac::{
 };
 use wasm_bindgen::prelude::*;
 
-use crate::{message::{DecryptedMessage, InboundChatMessage, MessagePayload}, types::{DeviceId, UserId}};
+use crate::{
+    message::{DecryptedMessage, InboundChatMessage, MessagePayload},
+    types::{DeviceId, UserId},
+};
 
 #[derive(Serialize)]
 pub struct EncryptionOutput {

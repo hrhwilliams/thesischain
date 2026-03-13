@@ -1,13 +1,20 @@
 mod session;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
 use r2d2::Pool;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 
-use crate::services::{AuthService, DeviceKeyService, MessageRelayService, OtkService};
+use crate::{
+    OAuthHandler,
+    services::{AuthService, DeviceKeyService, MessageRelayService, OtkService},
+};
+
+#[derive(Clone)]
+pub enum AppEvent {}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -15,10 +22,12 @@ pub struct AppState {
     pub device_keys: Arc<dyn DeviceKeyService>,
     pub otks: Arc<dyn OtkService>,
     pub relay: Arc<dyn MessageRelayService>,
-    pub oauth: crate::OAuthHandler,
+    pub oauth: HashMap<String, OAuthHandler>,
     pub signing_key: Arc<SigningKey>,
     pub miners: Arc<RwLock<Vec<miner::MinerInfo>>>,
     pool: Pool<ConnectionManager<PgConnection>>,
+    /// Sends AppEvents to subscribers
+    broadcaster: broadcast::Sender<AppEvent>,
 }
 
 impl AppState {
@@ -28,10 +37,12 @@ impl AppState {
         device_keys: Arc<dyn DeviceKeyService>,
         otks: Arc<dyn OtkService>,
         relay: Arc<dyn MessageRelayService>,
-        oauth: crate::OAuthHandler,
+        oauth: HashMap<String, OAuthHandler>,
         pool: Pool<ConnectionManager<PgConnection>>,
         signing_key: SigningKey,
     ) -> Self {
+        let (broadcaster, _) = broadcast::channel(256);
+
         Self {
             auth,
             device_keys,
@@ -41,6 +52,7 @@ impl AppState {
             signing_key: Arc::new(signing_key),
             miners: Arc::new(RwLock::new(Vec::new())),
             pool,
+            broadcaster,
         }
     }
 
@@ -50,5 +62,13 @@ impl AppState {
         self.pool
             .get()
             .map_err(|e| crate::AppError::PoolError(e.to_string()))
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
+        self.broadcaster.subscribe()
+    }
+
+    pub fn get_oauth_handler(&self, handler_name: &str) -> Option<&OAuthHandler> {
+        self.oauth.get(handler_name)
     }
 }

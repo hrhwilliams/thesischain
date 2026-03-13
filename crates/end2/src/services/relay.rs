@@ -32,6 +32,7 @@ impl DbMessageRelayService {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     fn get_conn(
         &self,
     ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, AppError> {
@@ -40,6 +41,7 @@ impl DbMessageRelayService {
             .map_err(|e| AppError::PoolError(e.to_string()))
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_channel_participants(&self, channel_id: ChannelId) -> Result<Vec<User>, AppError> {
         let mut conn = self.get_conn()?;
 
@@ -103,6 +105,7 @@ impl MessageRelayService for DbMessageRelayService {
         Ok(channels)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_channel_history(
         &self,
         user: &User,
@@ -148,6 +151,7 @@ impl MessageRelayService for DbMessageRelayService {
         Ok(history)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn create_channel_between(
         &self,
         sender: &User,
@@ -184,6 +188,7 @@ impl MessageRelayService for DbMessageRelayService {
         Ok(channel_info)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn save_message(
         &self,
         user: &User,
@@ -217,16 +222,19 @@ impl MessageRelayService for DbMessageRelayService {
         Ok((message, payloads))
     }
 
+    #[tracing::instrument(skip(self, device_tx))]
     async fn register_device(&self, device_id: DeviceId, device_tx: mpsc::Sender<WsEvent>) {
         let mut device_websockets = self.device_websockets.write().await;
         device_websockets.insert(device_id, device_tx);
     }
 
+    #[tracing::instrument(skip(self))]
     async fn unregister_device(&self, device_id: DeviceId) {
         let mut device_websockets = self.device_websockets.write().await;
         device_websockets.remove(&device_id);
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_broadcaster(&self, user: &User) -> broadcast::Sender<WsEvent> {
         self.user_websockets
             .write()
@@ -236,6 +244,7 @@ impl MessageRelayService for DbMessageRelayService {
             .clone()
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_broadcaster_for_device(
         &self,
         device_id: DeviceId,
