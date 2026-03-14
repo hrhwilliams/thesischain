@@ -17,16 +17,17 @@ use crate::{
     NewUser, OAuthHandler, RegistrationError, User, UserId, is_valid_nickname,
 };
 
+#[derive(Clone)]
 pub struct DbAuthService {
     pool: Pool<ConnectionManager<PgConnection>>,
-    oauth: HashMap<String, OAuthHandler>,
+    oauth: HashMap<&'static str, OAuthHandler>,
 }
 
 impl DbAuthService {
     #[must_use]
     pub const fn new(
         pool: Pool<ConnectionManager<PgConnection>>,
-        oauth: HashMap<String, OAuthHandler>,
+        oauth: HashMap<&'static str, OAuthHandler>,
     ) -> Self {
         Self { pool, oauth }
     }

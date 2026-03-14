@@ -12,6 +12,7 @@ use vodozemac::Curve25519PublicKey;
 use crate::schema::{device, one_time_key};
 use crate::{AppError, Device, DeviceId, InboundOtks, NewOtk, Otk, OtkService, User};
 
+#[derive(Clone)]
 pub struct DbOtkService {
     pool: Pool<ConnectionManager<PgConnection>>,
 }

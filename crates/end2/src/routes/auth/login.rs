@@ -2,7 +2,10 @@ use axum::{Json, extract::State, response::IntoResponse};
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use crate::{ApiError, AuthService, WebSession, WebSessionService};
+use crate::{
+    ApiError, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, WebSession,
+    WebSessionService,
+};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -10,15 +13,21 @@ pub struct LoginRequest {
     pub password: SecretString,
 }
 
-#[tracing::instrument(skip(auth, sessions, password))]
-pub async fn login(
-    State(auth): State<impl AuthService>,
-    State(sessions): State<impl WebSessionService>,
+#[tracing::instrument(skip(app_state, password))]
+pub async fn login<A, D, O, R, W>(
+    State(app_state): State<AppState<A, D, O, R, W>>,
     web_session: WebSession,
     Json(LoginRequest { username, password }): Json<LoginRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let user = auth.login(&username, password).await?;
-    sessions
+) -> Result<impl IntoResponse, ApiError>
+where
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService + Clone,
+{
+    let user = app_state.login(&username, password).await?;
+    app_state
         .insert_into_session(web_session, "user_id".to_string(), user.id)
         .await?;
     Ok(Json(user))

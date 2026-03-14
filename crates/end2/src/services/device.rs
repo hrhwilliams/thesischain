@@ -8,6 +8,7 @@ use r2d2::Pool;
 use crate::schema::device;
 use crate::{AppError, Device, DeviceId, DeviceKeyService, InboundDevice, NewDevice, User};
 
+#[derive(Clone)]
 pub struct DbDeviceKeyService {
     pool: Pool<ConnectionManager<PgConnection>>,
 }

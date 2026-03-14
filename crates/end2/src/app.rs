@@ -36,11 +36,11 @@ impl App {
     #[must_use]
     pub fn new<A, D, O, R, W>(app_state: AppState<A, D, O, R, W>) -> Self
     where
-        A: AuthService + Clone,
-        D: DeviceKeyService + Clone,
-        O: OtkService + Clone,
-        R: MessageRelayService + Clone,
-        R: WebSessionService + Clone,
+        A: AuthService + Clone + 'static,
+        D: DeviceKeyService + Clone + 'static,
+        O: OtkService + Clone + 'static,
+        R: MessageRelayService + Clone + 'static,
+        W: WebSessionService + Clone + 'static,
     {
         let router = axum::Router::new()
             .nest("/api", Api::router())

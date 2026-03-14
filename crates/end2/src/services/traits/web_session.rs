@@ -8,18 +8,18 @@ use crate::{AppError, SessionId, WebSession};
 pub trait WebSessionService: Clone + Send + Sync {
     async fn new_session(&self) -> Result<WebSession, AppError>;
     async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError>;
-    async fn insert_into_session<T: Serialize>(
+    async fn insert_into_session<T: Serialize + Send>(
         &self,
         web_session: WebSession,
         key: String,
         value: T,
     ) -> Result<WebSession, AppError>;
-    async fn get_from_session<T: DeserializeOwned>(
+    async fn get_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: &WebSession,
         key: &str,
     ) -> Result<Option<T>, AppError>;
-    async fn remove_from_session<T: DeserializeOwned>(
+    async fn remove_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: WebSession,
         key: &str,

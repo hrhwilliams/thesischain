@@ -1,4 +1,7 @@
-use crate::{ApiError, AppState, ExtractError, SessionId, User, UserId};
+use crate::{
+    ApiError, AppState, AuthService, DeviceKeyService, ExtractError, MessageRelayService,
+    OtkService, SessionId, User, UserId, WebSessionService,
+};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
@@ -8,9 +11,15 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use secrecy::SecretString;
 
 impl User {
-    async fn get_user_from_parts(
+    async fn get_user_from_parts<
+        A: AuthService + Clone,
+        D: DeviceKeyService + Clone,
+        O: OtkService + Clone,
+        R: MessageRelayService + Clone,
+        W: WebSessionService,
+    >(
         parts: &mut Parts,
-        app_state: &AppState,
+        app_state: &AppState<A, D, O, R, W>,
     ) -> Result<Self, ExtractError> {
         tracing::debug!("extracting user from request");
 
@@ -82,22 +91,39 @@ impl User {
     }
 }
 
-impl FromRequestParts<AppState> for User {
+impl<
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService,
+> FromRequestParts<AppState<A, D, O, R, W>> for User
+{
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        app_state: &AppState<A, D, O, R, W>,
+    ) -> Result<Self, ApiError> {
         Self::get_user_from_parts(parts, app_state)
             .await
             .map_err(Into::into)
     }
 }
 
-impl OptionalFromRequestParts<AppState> for User {
+impl<
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService,
+> OptionalFromRequestParts<AppState<A, D, O, R, W>> for User
+{
     type Rejection = ApiError;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        app_state: &AppState,
+        app_state: &AppState<A, D, O, R, W>,
     ) -> Result<Option<Self>, ApiError> {
         match Self::get_user_from_parts(parts, app_state).await {
             Ok(user) => Ok(Some(user)),

@@ -16,6 +16,7 @@ use crate::{
     NewMessagePayload, OutboundChatMessage, User, UserId, WsEvent,
 };
 
+#[derive(Clone)]
 pub struct DbMessageRelayService {
     pool: Pool<ConnectionManager<PgConnection>>,
     user_websockets: Arc<RwLock<HashMap<UserId, broadcast::Sender<WsEvent>>>>,

@@ -172,23 +172,20 @@ async fn main() -> Result<(), std::io::Error> {
     app.run(listener).await
 }
 
-struct AppStateBuilder {
+struct AppStateBuilder<A, D, O, R, W> {
     pool: Pool<ConnectionManager<PgConnection>>,
     signing_key: SigningKey,
     auth_constructor: Option<
-        fn(
-            Pool<ConnectionManager<PgConnection>>,
-            HashMap<String, OAuthHandler>,
-        ) -> impl AuthService,
+        Box<dyn FnOnce(Pool<ConnectionManager<PgConnection>>, HashMap<&'static str, OAuthHandler>) -> A>,
     >,
-    key: Option<impl DeviceKeyService>,
-    otk: Option<impl OtkService>,
-    relay: Option<impl MessageRelayService>,
-    web_sessions: Option<impl WebSessionService>,
-    oauth: HashMap<String, OAuthHandler>,
+    key: Option<D>,
+    otk: Option<O>,
+    relay: Option<R>,
+    web_sessions: Option<W>,
+    oauth: HashMap<&'static str, OAuthHandler>,
 }
 
-impl AppStateBuilder {
+impl AppStateBuilder<(), (), (), (), ()> {
     fn new(pool: Pool<ConnectionManager<PgConnection>>, signing_key: SigningKey) -> Self {
         Self {
             pool,
@@ -201,53 +198,108 @@ impl AppStateBuilder {
             oauth: HashMap::new(),
         }
     }
+}
 
-    fn auth_service<T: AuthService + 'static>(
-        mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>, HashMap<String, OAuthHandler>) -> T,
-    ) -> Self {
-        self.auth_constructor = Some(constructor);
-        self
+impl<A, D, O, R, W> AppStateBuilder<A, D, O, R, W> {
+    fn auth_service<A2>(
+        self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>, HashMap<&'static str, OAuthHandler>) -> A2,
+    ) -> AppStateBuilder<A2, D, O, R, W> where A2: 'static {
+        AppStateBuilder {
+            pool: self.pool,
+            signing_key: self.signing_key,
+            auth_constructor: Some(Box::new(constructor)),
+            key: self.key,
+            otk: self.otk,
+            relay: self.relay,
+            web_sessions: self.web_sessions,
+            oauth: self.oauth,
+        }
     }
 
-    fn key_directory<T: DeviceKeyService + 'static>(
-        mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
-    ) -> Self {
-        self.key = Some(constructor(self.pool.clone()));
-        self
+    fn key_directory<D2>(
+        self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> D2,
+    ) -> AppStateBuilder<A, D2, O, R, W> {
+        let key = constructor(self.pool.clone());
+        AppStateBuilder {
+            pool: self.pool,
+            signing_key: self.signing_key,
+            auth_constructor: self.auth_constructor,
+            key: Some(key),
+            otk: self.otk,
+            relay: self.relay,
+            web_sessions: self.web_sessions,
+            oauth: self.oauth,
+        }
     }
 
-    fn otk_directory<T: OtkService + 'static>(
-        mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
-    ) -> Self {
-        self.otk = Some(constructor(self.pool.clone()));
-        self
+    fn otk_directory<O2>(
+        self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> O2,
+    ) -> AppStateBuilder<A, D, O2, R, W> {
+        let otk = constructor(self.pool.clone());
+        AppStateBuilder {
+            pool: self.pool,
+            signing_key: self.signing_key,
+            auth_constructor: self.auth_constructor,
+            key: self.key,
+            otk: Some(otk),
+            relay: self.relay,
+            web_sessions: self.web_sessions,
+            oauth: self.oauth,
+        }
     }
 
-    fn message_relay<T: MessageRelayService + 'static>(
-        mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> T,
-    ) -> Self {
-        self.relay = Some(constructor(self.pool.clone()));
-        self
+    fn message_relay<R2>(
+        self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> R2,
+    ) -> AppStateBuilder<A, D, O, R2, W> {
+        let relay = constructor(self.pool.clone());
+        AppStateBuilder {
+            pool: self.pool,
+            signing_key: self.signing_key,
+            auth_constructor: self.auth_constructor,
+            key: self.key,
+            otk: self.otk,
+            relay: Some(relay),
+            web_sessions: self.web_sessions,
+            oauth: self.oauth,
+        }
     }
 
-    fn web_session_service<W: WebSessionService + 'static>(
-        mut self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> W,
-    ) -> Self {
-        self.web_sessions = Some(constructor(self.pool.clone()));
-        self
+    fn web_session_service<W2>(
+        self,
+        constructor: fn(Pool<ConnectionManager<PgConnection>>) -> W2,
+    ) -> AppStateBuilder<A, D, O, R, W2> {
+        let web_sessions = constructor(self.pool.clone());
+        AppStateBuilder {
+            pool: self.pool,
+            signing_key: self.signing_key,
+            auth_constructor: self.auth_constructor,
+            key: self.key,
+            otk: self.otk,
+            relay: self.relay,
+            web_sessions: Some(web_sessions),
+            oauth: self.oauth,
+        }
     }
 
-    fn with_oauth_handler(mut self, name: impl Into<String>, handler: OAuthHandler) -> Self {
-        self.oauth.insert(name.into(), handler);
+    fn with_oauth_handler(mut self, name: &'static str, handler: OAuthHandler) -> Self {
+        self.oauth.insert(name, handler);
         self
     }
+}
 
-    fn build(self) -> AppState {
+impl<
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService + Clone,
+> AppStateBuilder<A, D, O, R, W>
+{
+    fn build(self) -> AppState<A, D, O, R, W> {
         AppState::new(
             self.auth_constructor.expect("auth service not set")(self.pool.clone(), self.oauth),
             self.key.expect("key directory not set"),

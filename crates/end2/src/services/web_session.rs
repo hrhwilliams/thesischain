@@ -1,13 +1,15 @@
 use async_trait::async_trait;
 use diesel::r2d2::ConnectionManager;
-use diesel::{ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
+use diesel::{
+    ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,
+};
 use r2d2::Pool;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::schema::web_session;
-use crate::{AppError, WebSession, SessionId, WebSessionService};
+use crate::{AppError, SessionId, WebSession, WebSessionService};
 
 #[derive(Clone)]
 pub struct CookieWebSessionService {
@@ -17,9 +19,7 @@ pub struct CookieWebSessionService {
 impl CookieWebSessionService {
     #[must_use]
     pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
-        Self {
-            pool,
-        }
+        Self { pool }
     }
 
     #[tracing::instrument(skip(self))]
@@ -65,7 +65,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(session)
     }
 
-    async fn insert_into_session<T: Serialize>(
+    async fn insert_into_session<T: Serialize + Send>(
         &self,
         web_session: WebSession,
         key: String,
@@ -95,7 +95,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(web_session)
     }
 
-    async fn get_from_session<T: DeserializeOwned>(
+    async fn get_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: &WebSession,
         key: &str,
@@ -123,7 +123,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(value)
     }
 
-    async fn remove_from_session<T: DeserializeOwned>(
+    async fn remove_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: WebSession,
         key: &str,

@@ -44,7 +44,7 @@ useQuery({
         <div class="message-user-form">
             <form @submit.prevent="onSubmit">
                 <label>
-                    Username
+                    Create a chat with:
                     <input
                         v-model="username"
                         type="text"

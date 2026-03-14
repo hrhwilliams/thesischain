@@ -10,15 +10,20 @@ use axum_extra::extract::{
 };
 use time::Duration;
 
-use crate::{SessionId, WebSessionService};
+use crate::{AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, SessionId, WebSessionService};
 
-pub async fn create_session(
-    State(sessions): State<impl WebSessionService>,
+pub async fn create_session<A, D, O, R, W>(
+    State(app_state): State<AppState<A, D, O, R, W>>,
     req: Request,
     next: Next,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> where
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService + Clone, {
     let (mut parts, body) = req.into_parts();
-    let jar = CookieJar::from_request_parts(&mut parts, &sessions)
+    let jar = CookieJar::from_request_parts(&mut parts, &app_state)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -26,7 +31,7 @@ pub async fn create_session(
 
     if let Some(session_cookie) = jar.get("Session") {
         if let Ok(session_id) = SessionId::try_from(session_cookie.value()) {
-            if sessions
+            if app_state
                 .get_session(session_id)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -37,7 +42,7 @@ pub async fn create_session(
         }
     }
 
-    let session = sessions
+    let session = app_state
         .new_session()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

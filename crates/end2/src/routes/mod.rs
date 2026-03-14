@@ -1,6 +1,8 @@
 use axum::routing::{any, get, post};
 
-use crate::AppState;
+use crate::{
+    AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, WebSessionService,
+};
 
 mod auth;
 mod channel;
@@ -12,12 +14,17 @@ mod ws;
 pub struct Api;
 
 impl Api {
-    pub fn router() -> axum::Router<AppState> {
+    pub fn router<
+        A: AuthService + Clone + 'static,
+        D: DeviceKeyService + Clone + 'static,
+        O: OtkService + Clone + 'static,
+        R: MessageRelayService + Clone + 'static,
+        W: WebSessionService + Clone + 'static,
+    >() -> axum::Router<AppState<A, D, O, R, W>> {
         axum::Router::new()
             .route("/auth/register", post(auth::register))
             .route("/auth/login", post(auth::login))
             .route("/auth/logout", post(auth::logout))
-            .route("/auth/attest", post(auth::attest))
             .route("/auth/discord", get(auth::get_discord_oauth_url))
             .route("/auth/google", get(auth::get_google_oauth_url))
             .route("/auth/redirect/google", get(auth::google_redirect))
@@ -56,7 +63,5 @@ impl Api {
                 post(device::get_user_device_otk),
             )
             .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
-            .route("/miners/register", post(miners::register))
-            .route("/miners", get(miners::list))
     }
 }

@@ -1,4 +1,7 @@
-use crate::{ApiError, ChannelId, DeviceId, MessageId, MessageRelayService, User};
+use crate::{
+    ApiError, AppState, AuthService, ChannelId, DeviceKeyService, MessageId, MessageRelayService,
+    OtkService, User, WebSessionService,
+};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -8,19 +11,26 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct HistoryRequest {
-    pub device: DeviceId,
+    pub device: crate::DeviceId,
     pub after: Option<MessageId>,
 }
 
-#[tracing::instrument(skip(relay))]
-pub async fn get_channel_history(
-    State(relay): State<impl MessageRelayService>,
+#[tracing::instrument(skip(app_state))]
+pub async fn get_channel_history<A, D, O, R, W>(
+    State(app_state): State<AppState<A, D, O, R, W>>,
     user: User,
     Path(channel_id): Path<ChannelId>,
     Query(HistoryRequest { device, after }): Query<HistoryRequest>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<impl IntoResponse, ApiError>
+where
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService + Clone,
+{
     Ok(Json(
-        relay
+        app_state
             .get_channel_history(&user, channel_id, device, after)
             .await?,
     ))

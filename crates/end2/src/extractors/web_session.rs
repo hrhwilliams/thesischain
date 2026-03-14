@@ -1,14 +1,27 @@
-use crate::{ApiError, AppState, ExtractError, SessionId, WebSession};
+use crate::{
+    ApiError, AppState, AuthService, DeviceKeyService, ExtractError, MessageRelayService,
+    OtkService, SessionId, WebSession, WebSessionService,
+};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
 
-impl FromRequestParts<AppState> for WebSession {
+impl<
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService,
+> FromRequestParts<AppState<A, D, O, R, W>> for WebSession
+{
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        app_state: &AppState<A, D, O, R, W>,
+    ) -> Result<Self, ApiError> {
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
@@ -24,12 +37,19 @@ impl FromRequestParts<AppState> for WebSession {
     }
 }
 
-impl OptionalFromRequestParts<AppState> for WebSession {
+impl<
+    A: AuthService + Clone,
+    D: DeviceKeyService + Clone,
+    O: OtkService + Clone,
+    R: MessageRelayService + Clone,
+    W: WebSessionService,
+> OptionalFromRequestParts<AppState<A, D, O, R, W>> for WebSession
+{
     type Rejection = ApiError;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        app_state: &AppState,
+        app_state: &AppState<A, D, O, R, W>,
     ) -> Result<Option<Self>, ApiError> {
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
