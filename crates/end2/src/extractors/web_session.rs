@@ -22,6 +22,10 @@ impl<
         parts: &mut Parts,
         app_state: &AppState<A, D, O, R, W>,
     ) -> Result<Self, ApiError> {
+        if let Some(session) = parts.extensions.get::<Self>().cloned() {
+            return Ok(session);
+        }
+
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
@@ -51,9 +55,14 @@ impl<
         parts: &mut Parts,
         app_state: &AppState<A, D, O, R, W>,
     ) -> Result<Option<Self>, ApiError> {
+        if let Some(session) = parts.extensions.get::<Self>().cloned() {
+            return Ok(Some(session));
+        }
+
         let jar = CookieJar::from_request_parts(parts, app_state)
             .await
             .map_err(|e| ExtractError::CookieError(e.to_string()))?;
+
         if let Some(session_cookie) = jar.get("Session") {
             let session_id = SessionId::try_from(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;

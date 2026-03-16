@@ -1,6 +1,6 @@
 use crate::{
     ApiError, AppState, AuthService, DeviceKeyService, ExtractError, MessageRelayService,
-    OtkService, SessionId, User, UserId, WebSessionService,
+    OtkService, SessionId, User, UserId, WebSession, WebSessionService,
 };
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
@@ -30,11 +30,15 @@ impl User {
         if let Some(session_cookie) = jar.get("Session") {
             let session_id = SessionId::try_from(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
-            let session = app_state
-                .get_session(session_id)
-                .await
-                .map_err(ExtractError::LookupError)?
-                .ok_or(ExtractError::NoSession)?;
+            let session = if let Some(s) = parts.extensions.get::<WebSession>().cloned() {
+                s
+            } else {
+                app_state
+                    .get_session(session_id)
+                    .await
+                    .map_err(ExtractError::LookupError)?
+                    .ok_or(ExtractError::NoSession)?
+            };
 
             let user_id = app_state
                 .get_from_session::<UserId>(&session, "user_id")

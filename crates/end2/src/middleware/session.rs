@@ -32,16 +32,16 @@ where
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let req = Request::from_parts(parts, body);
+    let mut req = Request::from_parts(parts, body);
 
     if let Some(session_cookie) = jar.get("Session") {
         if let Ok(session_id) = SessionId::try_from(session_cookie.value()) {
-            if app_state
+            if let Some(session) = app_state
                 .get_session(session_id)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-                .is_some()
             {
+                req.extensions_mut().insert(session);
                 return Ok((jar, next.run(req).await));
             }
         }
@@ -54,7 +54,10 @@ where
 
     tracing::debug!("created new session {}", session.id);
 
-    let cookie = Cookie::build(("Session", session.id.to_string()))
+    let session_id = session.id;
+    req.extensions_mut().insert(session);
+
+    let cookie = Cookie::build(("Session", session_id.to_string()))
         .http_only(true)
         .secure(true)
         .same_site(SameSite::Lax)
