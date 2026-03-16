@@ -1,4 +1,7 @@
-use crate::{ApiError, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, User, UserId, WebSession, WebSessionService};
+use crate::{
+    ApiError, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, User,
+    UserId, WebSession, WebSessionService,
+};
 use axum::{Json, extract::State, response::IntoResponse};
 
 #[tracing::instrument(skip(app_state))]

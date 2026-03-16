@@ -176,7 +176,12 @@ struct AppStateBuilder<A, D, O, R, W> {
     pool: Pool<ConnectionManager<PgConnection>>,
     signing_key: SigningKey,
     auth_constructor: Option<
-        Box<dyn FnOnce(Pool<ConnectionManager<PgConnection>>, HashMap<&'static str, OAuthHandler>) -> A>,
+        Box<
+            dyn FnOnce(
+                Pool<ConnectionManager<PgConnection>>,
+                HashMap<&'static str, OAuthHandler>,
+            ) -> A,
+        >,
     >,
     key: Option<D>,
     otk: Option<O>,
@@ -203,8 +208,14 @@ impl AppStateBuilder<(), (), (), (), ()> {
 impl<A, D, O, R, W> AppStateBuilder<A, D, O, R, W> {
     fn auth_service<A2>(
         self,
-        constructor: fn(Pool<ConnectionManager<PgConnection>>, HashMap<&'static str, OAuthHandler>) -> A2,
-    ) -> AppStateBuilder<A2, D, O, R, W> where A2: 'static {
+        constructor: fn(
+            Pool<ConnectionManager<PgConnection>>,
+            HashMap<&'static str, OAuthHandler>,
+        ) -> A2,
+    ) -> AppStateBuilder<A2, D, O, R, W>
+    where
+        A2: 'static,
+    {
         AppStateBuilder {
             pool: self.pool,
             signing_key: self.signing_key,

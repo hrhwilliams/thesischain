@@ -1,4 +1,7 @@
-use crate::{ApiError, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, UserId, WebSessionService};
+use crate::{
+    ApiError, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, UserId,
+    WebSessionService,
+};
 use axum::{
     Json,
     extract::{Path, State},

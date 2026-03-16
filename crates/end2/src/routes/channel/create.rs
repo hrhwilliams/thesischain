@@ -86,10 +86,7 @@ where
     }
 
     // Send confirmation to the sender's device
-    if let Some(sender) = app_state
-        .get_broadcaster_for_device(sender_device_id)
-        .await
-    {
+    if let Some(sender) = app_state.get_broadcaster_for_device(sender_device_id).await {
         let _ = sender
             .send(WsEvent::MessageReceived(MessageReceipt {
                 message_id: saved_message.id,

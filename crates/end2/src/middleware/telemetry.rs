@@ -65,7 +65,8 @@ pub async fn telemetry(request: Request<Body>, next: Next) -> Response {
                     .f64_histogram("http.request.duration.ms")
                     .with_unit("ms")
                     .with_boundaries(vec![
-                        0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0,
+                        0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 7.5, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0,
+                        1000.0,
                     ])
                     .build()
             })

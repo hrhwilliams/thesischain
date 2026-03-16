@@ -18,12 +18,20 @@ where
     R: MessageRelayService + Clone,
     W: WebSessionService + Clone,
 {
-    let user = app_state.register_user(new_user).await?;
+    // let user = app_state.register_user(new_user).await?;
+    let user = app_state.register_user(new_user).await.map_err(|e| {
+        tracing::error!(?e, "failed to register user");
+        e
+    })?;
 
     if let Some(web_session) = web_session {
         app_state
             .insert_into_session(web_session, "user_id".to_string(), user.id)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(?e, "failed to insert into session");
+                e
+            })?;
     }
 
     Ok(Json(user))

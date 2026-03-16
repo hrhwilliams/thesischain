@@ -45,7 +45,9 @@ where
     R: MessageRelayService + Clone,
     W: WebSessionService + Clone,
 {
-    app_state.upload_otks(&user, device_id, inbound_otks).await?;
+    app_state
+        .upload_otks(&user, device_id, inbound_otks)
+        .await?;
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 
