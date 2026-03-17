@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import type { ApiError } from '../api'
+import { request } from '../api'
 import { useUserStore } from '../stores/user'
 import { useDeviceStore } from '../stores/device'
 import { getDeviceId } from '../services/crypto'
@@ -12,6 +13,14 @@ const nickname = ref<string>('')
 const userStore = useUserStore()
 const deviceStore = useDeviceStore()
 const loading = ref(false)
+
+const { data: backendVersion } = useQuery({
+    queryKey: ['version'],
+    queryFn: async () => {
+        const response = await request<{ version: string, commit: string }>('/version', 'GET')
+        return response.ok ? response.value : null
+    },
+})
 
 const { data: devices } = useQuery({
     queryKey: ['devices'],
@@ -89,5 +98,5 @@ async function onSubmit() {
         </ErrorMessage>
     </div>
     <h3>Backend version</h3>
-    <code>101155c7fca3a25eb1588a98b4c5ae4ea2832425</code>
+    <code v-if="backendVersion">{{ backendVersion.version }} ({{ backendVersion.commit }})</code>
 </template>

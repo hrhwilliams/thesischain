@@ -9,6 +9,7 @@ mod channel;
 mod device;
 mod me;
 mod user;
+mod version;
 mod ws;
 
 pub struct Api;
@@ -22,6 +23,7 @@ impl Api {
         W: WebSessionService + Clone + 'static,
     >() -> axum::Router<AppState<A, D, O, R, W>> {
         axum::Router::new()
+            .route("/version", get(version::version))
             .route("/auth/register", post(auth::register))
             .route("/auth/login", post(auth::login))
             .route("/auth/logout", post(auth::logout))
