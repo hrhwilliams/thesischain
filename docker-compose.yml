@@ -111,6 +111,7 @@ services:
       DATABASE_URL: "postgres://${DB_USER}:${DB_PASS}@database:${DB_PORT}/${DB_NAME}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_SERVICE_NAME: "end2"
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     depends_on:
       database:
         condition: service_healthy
