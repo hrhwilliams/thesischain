@@ -106,7 +106,7 @@ export async function encryptMessage(
     let session = await db.sessions.get(channelId + ':' + device.device_id)
     let output: EncryptionOutput
 
-    if (session && !context.needs_otk(session)) {
+    if (session) {
         output = context.encrypt(session, device, plaintext)
     } else {
         const response = await request<Otk>(`/user/${device.user_id}/device/${device.device_id}/otk`, 'POST')
@@ -134,8 +134,13 @@ export async function decryptMessage(
     let output: DecryptionOutput
 
     if (message.is_pre_key) {
-        output = context.decrypt_otk(device, message)
-        await saveDevice(userId)
+        const session = await db.sessions.get(message.channel_id + ':' + message.device_id)
+        if (session) {
+            output = context.decrypt(session, device, message)
+        } else {
+            output = context.decrypt_otk(device, message)
+            await saveDevice(userId)
+        }
     } else {
         const session = await db.sessions.get(message.channel_id + ':' + message.device_id)
         if (session) {

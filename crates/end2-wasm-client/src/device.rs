@@ -77,11 +77,11 @@ impl Device {
     ///
     /// # Errors
     /// Returns `JsError` if the device ID is not a valid UUID.
-    pub fn new(device_id: String) -> Result<Self, JsError> {
-        Ok(Self {
+    pub fn new(device_id: String) -> Self {
+        Self {
             device_id: DeviceId(device_id),
             account: Account::new(),
-        })
+        }
     }
 
     pub fn device_id(&self) -> String {
@@ -199,19 +199,21 @@ impl Device {
         let device = serde_wasm_bindgen::from_value::<DeviceInfo>(device)?;
         let mut session = Session::from_pickle(pickle);
 
-        let OlmMessage::Normal(msg) = session.encrypt(plaintext) else {
-            return Err(JsError::new("expected Normal message"));
+        let (ciphertext, is_pre_key) = match session.encrypt(plaintext) {
+            OlmMessage::Normal(msg) => (msg.to_base64(), false),
+            OlmMessage::PreKey(pkm) => (pkm.to_base64(), true),
         };
 
         let payload = MessagePayload {
             recipient_device_id: device.device_id,
-            ciphertext: msg.to_base64(),
-            is_pre_key: false,
+            ciphertext,
+            is_pre_key,
         };
 
-        let session = session.pickle();
-
-        let output = EncryptionOutput { session, payload };
+        let output = EncryptionOutput {
+            session: session.pickle(),
+            payload,
+        };
 
         Ok(serde_wasm_bindgen::to_value(&output)?)
     }
@@ -265,8 +267,12 @@ impl Device {
         let payload: InboundChatMessage = serde_wasm_bindgen::from_value(payload)?;
         let mut session = Session::from_pickle(pickle);
 
-        let msg = Message::from_base64(&payload.ciphertext)?;
-        let plaintext_bytes = session.decrypt(&OlmMessage::Normal(msg))?;
+        let olm_message = if payload.is_pre_key {
+            OlmMessage::PreKey(PreKeyMessage::from_base64(&payload.ciphertext)?)
+        } else {
+            OlmMessage::Normal(Message::from_base64(&payload.ciphertext)?)
+        };
+        let plaintext_bytes = session.decrypt(&olm_message)?;
 
         let plaintext = String::from_utf8(plaintext_bytes)?;
 
