@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::OnceLock;
 
 use axum::{body::Body, extract::MatchedPath, http::Request, middleware::Next, response::Response};
@@ -16,17 +17,11 @@ pub async fn telemetry(request: Request<Body>, next: Next) -> Response {
         |p| p.as_str().to_owned(),
     );
 
-    let headers: String = request
-        .headers()
-        .iter()
-        .map(|s| {
-            format!(
-                "{}:{};",
-                s.0,
-                s.1.to_str().expect("should be string").to_string()
-            )
-        })
-        .collect();
+    let headers: String = request.headers().iter().fold(String::new(), |mut acc, s| {
+        write!(acc, "{}:{};", s.0, s.1.to_str().expect("should be string"))
+            .expect("writing to string should not fail");
+        acc
+    });
 
     let parent_ctx = TraceContextPropagator::new().extract(&HeaderExtractor(request.headers()));
 

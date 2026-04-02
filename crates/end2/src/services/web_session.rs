@@ -4,12 +4,11 @@ use diesel::{
     ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,
 };
 use r2d2::Pool;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::schema::web_session;
-use crate::{AppError, SessionId, WebSession, WebSessionService};
+use crate::{AppError, SessionId, WebSession};
 
 #[derive(Clone)]
 pub struct CookieWebSessionService {
@@ -18,7 +17,7 @@ pub struct CookieWebSessionService {
 
 impl CookieWebSessionService {
     #[must_use]
-    pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
+    pub const fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         Self { pool }
     }
 
@@ -32,10 +31,9 @@ impl CookieWebSessionService {
     }
 }
 
-#[async_trait]
-impl WebSessionService for CookieWebSessionService {
+impl CookieWebSessionService {
     #[tracing::instrument(skip(self))]
-    async fn new_session(&self) -> Result<WebSession, AppError> {
+    pub async fn new_session(&self) -> Result<WebSession, AppError> {
         let mut conn = self.get_conn()?;
 
         let session = tokio::task::spawn_blocking(move || {
@@ -50,7 +48,7 @@ impl WebSessionService for CookieWebSessionService {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError> {
+    pub async fn get_session(&self, session_id: SessionId) -> Result<Option<WebSession>, AppError> {
         let mut conn = self.get_conn()?;
 
         let session = tokio::task::spawn_blocking(move || {
@@ -65,7 +63,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(session)
     }
 
-    async fn insert_into_session<T: Serialize + Send>(
+    pub async fn insert_into_session<T: Serialize + Send>(
         &self,
         web_session: WebSession,
         key: String,
@@ -95,7 +93,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(web_session)
     }
 
-    async fn get_from_session<T: DeserializeOwned + Send>(
+    pub async fn get_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: &WebSession,
         key: &str,
@@ -123,7 +121,7 @@ impl WebSessionService for CookieWebSessionService {
         Ok(value)
     }
 
-    async fn remove_from_session<T: DeserializeOwned + Send>(
+    pub async fn remove_from_session<T: DeserializeOwned + Send>(
         &self,
         web_session: WebSession,
         key: &str,

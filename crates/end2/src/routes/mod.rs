@@ -1,8 +1,6 @@
 use axum::routing::{any, get, post};
 
-use crate::{
-    AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService, WebSessionService,
-};
+use crate::AppState;
 
 mod auth;
 mod channel;
@@ -15,13 +13,7 @@ mod ws;
 pub struct Api;
 
 impl Api {
-    pub fn router<
-        A: AuthService + Clone + 'static,
-        D: DeviceKeyService + Clone + 'static,
-        O: OtkService + Clone + 'static,
-        R: MessageRelayService + Clone + 'static,
-        W: WebSessionService + Clone + 'static,
-    >() -> axum::Router<AppState<A, D, O, R, W>> {
+    pub fn router() -> axum::Router<AppState> {
         axum::Router::new()
             .route("/version", get(version::version))
             .route("/auth/register", post(auth::register))

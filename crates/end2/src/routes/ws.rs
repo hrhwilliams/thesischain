@@ -1,6 +1,5 @@
 use crate::{
-    ApiError, AppState, AuthService, CountedEvent, DeviceId, DeviceKeyService, MessageRelayService,
-    OtkService, ReplayRequest, User, WebSessionService, WsEvent,
+    ApiError, AppState, CountedEvent, DeviceId, MessageRelayService, ReplayRequest, User, WsEvent,
 };
 use axum::{
     extract::{
@@ -10,24 +9,18 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{SinkExt, StreamExt};
+use std::sync::Arc;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio::time::{Duration, interval, timeout};
 
 #[tracing::instrument(skip(app_state, ws))]
-pub async fn handle_websocket<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn handle_websocket(
+    State(app_state): State<AppState>,
     user: User,
     Path(device_id): Path<DeviceId>,
     ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone + 'static,
-    W: WebSessionService + Clone,
-{
-    let relay = app_state.relay;
+) -> Result<impl IntoResponse, ApiError> {
+    let relay = app_state.relay.clone();
     Ok(ws.on_upgrade(move |socket| websocket(socket, user, device_id, relay)))
 }
 
@@ -68,7 +61,7 @@ pub async fn websocket(
     socket: WebSocket,
     user: User,
     device_id: DeviceId,
-    relay: impl MessageRelayService,
+    relay: Arc<dyn MessageRelayService>,
 ) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 

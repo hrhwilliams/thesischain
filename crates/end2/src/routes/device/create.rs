@@ -1,7 +1,4 @@
-use crate::{
-    ApiError, AppError, AppState, AuthService, DeviceId, DeviceKeyService, InboundDevice,
-    MessageRelayService, OtkService, User, WebSessionService,
-};
+use crate::{ApiError, AppError, AppState, DeviceId, InboundDevice, User};
 use axum::{
     Json,
     extract::{Path, State},
@@ -9,56 +6,37 @@ use axum::{
 };
 
 #[tracing::instrument(skip(app_state))]
-pub async fn new_device<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn new_device(
+    State(app_state): State<AppState>,
     user: User,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
-    let new_device = app_state.new_device_for(&user).await?;
+) -> Result<impl IntoResponse, ApiError> {
+    let new_device = app_state.device_keys.new_device_for(&user).await?;
     Ok(Json(new_device))
 }
 
 #[tracing::instrument(skip(app_state))]
-pub async fn upload_keys<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn upload_keys(
+    State(app_state): State<AppState>,
     user: User,
     Path(device_id): Path<DeviceId>,
     Json(inbound_device_keys): Json<InboundDevice>,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
+) -> Result<impl IntoResponse, ApiError> {
     let device = app_state
+        .device_keys
         .set_device_keys(&user, device_id, inbound_device_keys)
         .await?;
     Ok(Json(device))
 }
 
 #[tracing::instrument(skip(app_state))]
-pub async fn upload_keys_me<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn upload_keys_me(
+    State(app_state): State<AppState>,
     user: User,
     Json(inbound_device_keys): Json<InboundDevice>,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
+) -> Result<impl IntoResponse, ApiError> {
     if let Some(device_id) = inbound_device_keys.device_id {
         let device = app_state
+            .device_keys
             .set_device_keys(&user, device_id, inbound_device_keys)
             .await?;
         Ok(Json(device))

@@ -1,7 +1,4 @@
-use crate::{
-    ApiError, AppState, AuthService, DeviceKeyService, ExtractError, MessageRelayService,
-    OtkService, SessionId, User, UserId, WebSession, WebSessionService,
-};
+use crate::{ApiError, AppState, ExtractError, SessionId, User, UserId, WebSession};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
@@ -11,15 +8,9 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use secrecy::SecretString;
 
 impl User {
-    async fn get_user_from_parts<
-        A: AuthService + Clone,
-        D: DeviceKeyService + Clone,
-        O: OtkService + Clone,
-        R: MessageRelayService + Clone,
-        W: WebSessionService,
-    >(
+    async fn get_user_from_parts(
         parts: &mut Parts,
-        app_state: &AppState<A, D, O, R, W>,
+        app_state: &AppState,
     ) -> Result<Self, ExtractError> {
         tracing::debug!("extracting user from request");
 
@@ -34,6 +25,7 @@ impl User {
                 s
             } else {
                 app_state
+                    .web_sessions
                     .get_session(session_id)
                     .await
                     .map_err(ExtractError::LookupError)?
@@ -41,6 +33,7 @@ impl User {
             };
 
             let user_id = app_state
+                .web_sessions
                 .get_from_session::<UserId>(&session, "user_id")
                 .await
                 .map_err(ExtractError::LookupError)?
@@ -95,39 +88,22 @@ impl User {
     }
 }
 
-impl<
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService,
-> FromRequestParts<AppState<A, D, O, R, W>> for User
-{
+impl FromRequestParts<AppState> for User {
     type Rejection = ApiError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        app_state: &AppState<A, D, O, R, W>,
-    ) -> Result<Self, ApiError> {
+    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
         Self::get_user_from_parts(parts, app_state)
             .await
             .map_err(Into::into)
     }
 }
 
-impl<
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService,
-> OptionalFromRequestParts<AppState<A, D, O, R, W>> for User
-{
+impl OptionalFromRequestParts<AppState> for User {
     type Rejection = ApiError;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        app_state: &AppState<A, D, O, R, W>,
+        app_state: &AppState,
     ) -> Result<Option<Self>, ApiError> {
         match Self::get_user_from_parts(parts, app_state).await {
             Ok(user) => Ok(Some(user)),

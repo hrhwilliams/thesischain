@@ -1,7 +1,4 @@
-use crate::{
-    ApiError, AppError, AppState, AuthService, DeviceId, DeviceKeyService, MessageRelayService,
-    OtkService, User, UserId, WebSessionService,
-};
+use crate::{ApiError, AppError, AppState, DeviceId, User, UserId};
 use axum::{
     Json,
     extract::{Path, State},
@@ -9,80 +6,54 @@ use axum::{
 };
 
 #[tracing::instrument(skip(app_state))]
-pub async fn get_device<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn get_device(
+    State(app_state): State<AppState>,
     user: User,
     Path(device_id): Path<DeviceId>,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
-    let device = app_state.get_device(&user, device_id).await?;
+) -> Result<impl IntoResponse, ApiError> {
+    let device = app_state.device_keys.get_device(&user, device_id).await?;
     Ok(Json(device))
 }
 
 #[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]
-pub async fn get_user_device<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn get_user_device(
+    State(app_state): State<AppState>,
     _user: User,
     Path((user_id, device_id)): Path<(UserId, DeviceId)>,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
+) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
+        .auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let device = app_state.get_device(&target_user, device_id).await?;
+    let device = app_state.device_keys.get_device(&target_user, device_id).await?;
     Ok(Json(device))
 }
 
 #[tracing::instrument(skip(app_state))]
-pub async fn get_devices<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn get_devices(
+    State(app_state): State<AppState>,
     user: User,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
-    let devices = app_state.get_all_devices(&user).await?;
+) -> Result<impl IntoResponse, ApiError> {
+    let devices = app_state.device_keys.get_all_devices(&user).await?;
     Ok(Json(devices))
 }
 
 #[allow(clippy::used_underscore_binding)]
 #[tracing::instrument(skip(app_state))]
-pub async fn get_user_devices<A, D, O, R, W>(
-    State(app_state): State<AppState<A, D, O, R, W>>,
+pub async fn get_user_devices(
+    State(app_state): State<AppState>,
     _user: User,
     Path(user_id): Path<UserId>,
-) -> Result<impl IntoResponse, ApiError>
-where
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService + Clone,
-{
+) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
+        .auth
         .get_user_info(user_id)
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let devices = app_state.get_all_devices(&target_user).await?;
+    let devices = app_state.device_keys.get_all_devices(&target_user).await?;
     Ok(Json(devices))
 }

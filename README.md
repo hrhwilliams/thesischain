@@ -14,7 +14,9 @@ https://docs.ipfs.tech/concepts/ipns/#mutability-in-ipfs
 ### Stats
 
 ```
-> k6 run --vus 250 --duration 5m get_test.js    
+Monday, March 16, 2026 5:47:28 PM PDT
+
+> > k6 run --vus 250 --duration 5m get_test.js    
 
          /\      Grafana   /‾‾/  
     /\  /  \     |\  __   /  /   
@@ -34,26 +36,33 @@ https://docs.ipfs.tech/concepts/ipns/#mutability-in-ipfs
 
   █ TOTAL RESULTS
 
-    checks_total.......: 62292  204.475316/s
-    checks_succeeded...: 99.69% 62102 out of 62292
-    checks_failed......: 0.30%  190 out of 62292
+    checks_total.......: 66444  216.588969/s
+    checks_succeeded...: 99.63% 66201 out of 66444
+    checks_failed......: 0.36%  243 out of 66444
 
     ✗ 200
-      ↳  99% — ✓ 62102 / ✗ 190
+      ↳  99% — ✓ 66201 / ✗ 243
 
     HTTP
-    http_req_duration..............: avg=330.97ms min=18.65ms med=166.6ms  max=2.05s p(90)=872.22ms p(95)=1.05s
-      { expected_response:true }...: avg=331.09ms min=29.5ms  med=166.64ms max=2.05s p(90)=873.15ms p(95)=1.06s
-    http_req_failed................: 0.26% 190 out of 72674
-    http_reqs......................: 72674 238.554535/s
+    http_req_duration..............: avg=272ms    min=30.49ms med=158.93ms max=2.24s p(90)=668.52ms p(95)=861.63ms
+      { expected_response:true }...: avg=272.28ms min=30.49ms med=159.64ms max=2.24s p(90)=669.39ms p(95)=862.08ms
+    http_req_failed................: 0.31% 243 out of 77518
+    http_reqs......................: 77518 252.68713/s
 
     EXECUTION
-    iteration_duration.............: avg=7.32s    min=5.38s   med=7.38s    max=8.01s p(90)=7.57s    p(95)=7.65s
-    iterations.....................: 10382 34.079219/s
-    vus............................: 234   min=234          max=250
+    iteration_duration.............: avg=6.91s    min=5.37s   med=7.07s    max=8.15s p(90)=7.25s    p(95)=7.33s
+    iterations.....................: 11074 36.098161/s
+    vus............................: 215   min=215          max=250
     vus_max........................: 250   min=250          max=250
 
     NETWORK
-    data_received..................: 51 MB 166 kB/s
-    data_sent......................: 35 MB 116 kB/s
+    data_received..................: 54 MB 175 kB/s
+    data_sent......................: 38 MB 122 kB/s
+
+running (5m06.8s), 000/250 VUs, 11074 complete and 0 interrupted iterations 
+
+default ✓ [======================================] 250 VUs  5m0s
+
+
+created 11056 users
 ```

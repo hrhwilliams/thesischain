@@ -1,27 +1,14 @@
-use crate::{
-    ApiError, AppState, AuthService, DeviceKeyService, ExtractError, MessageRelayService,
-    OtkService, SessionId, WebSession, WebSessionService,
-};
+use crate::{ApiError, AppState, ExtractError, SessionId, WebSession};
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts},
     http::request::Parts,
 };
 use axum_extra::extract::CookieJar;
 
-impl<
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService,
-> FromRequestParts<AppState<A, D, O, R, W>> for WebSession
-{
+impl FromRequestParts<AppState> for WebSession {
     type Rejection = ApiError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        app_state: &AppState<A, D, O, R, W>,
-    ) -> Result<Self, ApiError> {
+    async fn from_request_parts(parts: &mut Parts, app_state: &AppState) -> Result<Self, ApiError> {
         if let Some(session) = parts.extensions.get::<Self>().cloned() {
             return Ok(session);
         }
@@ -33,6 +20,7 @@ impl<
         let session_id = SessionId::try_from(session_cookie.value())
             .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
         let session = app_state
+            .web_sessions
             .get_session(session_id)
             .await?
             .ok_or(ExtractError::NoSession)?;
@@ -41,19 +29,12 @@ impl<
     }
 }
 
-impl<
-    A: AuthService + Clone,
-    D: DeviceKeyService + Clone,
-    O: OtkService + Clone,
-    R: MessageRelayService + Clone,
-    W: WebSessionService,
-> OptionalFromRequestParts<AppState<A, D, O, R, W>> for WebSession
-{
+impl OptionalFromRequestParts<AppState> for WebSession {
     type Rejection = ApiError;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        app_state: &AppState<A, D, O, R, W>,
+        app_state: &AppState,
     ) -> Result<Option<Self>, ApiError> {
         if let Some(session) = parts.extensions.get::<Self>().cloned() {
             return Ok(Some(session));
@@ -67,6 +48,7 @@ impl<
             let session_id = SessionId::try_from(session_cookie.value())
                 .map_err(|e| ExtractError::InvalidSessionId(e.to_string()))?;
             let session = app_state
+                .web_sessions
                 .get_session(session_id)
                 .await?
                 .ok_or(ExtractError::NoSession)?;

@@ -4,11 +4,7 @@ use axum::middleware;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-use crate::session::create_session;
-use crate::{
-    Api, AppState, AuthService, DeviceKeyService, MessageRelayService, OtkService,
-    WebSessionService, telemetry,
-};
+use crate::{Api, AppState, create_session, telemetry};
 
 /// flow
 /// - client registers username and x25519/ed25519 key bundle
@@ -34,14 +30,7 @@ pub struct App {
 
 impl App {
     #[must_use]
-    pub fn new<A, D, O, R, W>(app_state: AppState<A, D, O, R, W>) -> Self
-    where
-        A: AuthService + Clone + 'static,
-        D: DeviceKeyService + Clone + 'static,
-        O: OtkService + Clone + 'static,
-        R: MessageRelayService + Clone + 'static,
-        W: WebSessionService + Clone + 'static,
-    {
+    pub fn new(app_state: AppState) -> Self {
         let router = axum::Router::new()
             .nest("/api", Api::router())
             .layer(middleware::from_fn_with_state(
