@@ -1,22 +1,27 @@
-# Thesischain
+# End2
 
-- Two types of node: Client node and Miner node
-- Client node messages on behalf of user, Miner node interfaces with the Blockchain
-  - Nodes communicate via libp2p
-- Pending messages can be stored encrypted for a time via IPFS, solving asynchronicity
-- biggest two challenges:
-  - getting valid identity/public key on the chain - solved by proof-of-possession
-  - finding and establishing a channel between two users whose identities are on the
-    chain
+An experimental user-auditable end-to-end encrypted messaging application. End2
+breaks down end-to-end messaging into three parts: entity authentication, key
+distribution, and message relay. The key directory is managed by the users of
+the service with a distributed ledger, preventing the service from maliciously
+distributing keys and thus compromising the security of its users intentionally
+or due to a compromise.
 
-https://docs.ipfs.tech/concepts/ipns/#mutability-in-ipfs
+## Organization
+
+|crate|path|description|
+|-----|---|----------|
+|end2 |[crates/end2](crates/end2)|backend |
+|end2-wasm-client|[crates/end2-wasm-client](crates/end2-wasm-client)|frontend and client-side encryption WASM library|
+|end2-api-client|[crates/end2](crates/end2-api-client)|purely CLI-based client|
+|miner|[crates/miner](crates/miner)|code for miner node|
 
 ### Stats
 
 ```
 Monday, March 16, 2026 5:47:28 PM PDT
 
-> > k6 run --vus 250 --duration 5m get_test.js    
+$ k6 run --vus 250 --duration 5m get_test.js    
 
          /\      Grafana   /‾‾/  
     /\  /  \     |\  __   /  /   
