@@ -1,24 +1,31 @@
-import Dexie, { type EntityTable } from "dexie"
-import type { DecryptedMessage } from "./types/message"
+import Dexie, { type EntityTable } from "dexie";
+import type { DecryptedMessage } from "./types/message";
 
 export type DevicePickle = {
-    user_id: string,
-    pickle: string
-}
+  user_id: string;
+  pickle: string;
+};
 
 export type SessionPickle = {
-    channel_device_id: string,
-    pickle: string,
+  channel_device_id: string;
+  pickle: string;
+};
+
+export type WalletPickle = {
+  user_id: string;
+  private_key: `0x${string}`;
 }
 
-export const db = new Dexie('messages') as Dexie & {
-    messages: EntityTable<DecryptedMessage, 'message_id'>
-    sessions: EntityTable<SessionPickle, 'channel_device_id'>
-    account: EntityTable<DevicePickle, 'user_id'>
-}
+export const db = new Dexie("messages") as Dexie & {
+  messages: EntityTable<DecryptedMessage, "message_id">;
+  sessions: EntityTable<SessionPickle, "channel_device_id">;
+  account: EntityTable<DevicePickle, "user_id">;
+  wallet: EntityTable<WalletPickle, "user_id">;
+};
 
-db.version(1).stores({
-    messages: 'message_id, [channel_id+timestamp], author_id',
-    sessions: 'channel_device_id',
-    account: 'user_id'
-})
+db.version(2).stores({
+  messages: "message_id, [channel_id+timestamp], author_id",
+  sessions: "channel_device_id",
+  account: "user_id",
+  wallet: "user_id",
+});

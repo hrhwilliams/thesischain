@@ -1,6 +1,6 @@
 use axum::routing::{any, get, post};
 
-use crate::AppState;
+use crate::{AppState, handle_websocket};
 
 mod auth;
 mod channel;
@@ -8,7 +8,6 @@ mod device;
 mod me;
 mod user;
 mod version;
-mod ws;
 
 pub struct Api;
 
@@ -46,6 +45,7 @@ impl Api {
                 "/me/device/{device_id}/otks",
                 get(device::get_otks).post(device::upload_otks),
             )
+            .route("/user/valid", get(user::get_valid_users))
             .route("/user/{user_id}", get(user::get_user_info))
             .route("/user/{user_id}/devices", get(device::get_user_devices))
             .route(
@@ -56,6 +56,6 @@ impl Api {
                 "/user/{user_id}/device/{device_id}/otk",
                 post(device::get_user_device_otk),
             )
-            .route("/me/device/{device_id}/ws", any(ws::handle_websocket))
+            .route("/me/device/{device_id}/ws", any(handle_websocket))
     }
 }

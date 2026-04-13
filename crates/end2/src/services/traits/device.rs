@@ -14,4 +14,8 @@ pub trait DeviceKeyService: Send + Sync {
         device_id: DeviceId,
         keys: InboundDevice,
     ) -> Result<Device, AppError>;
+
+    async fn get_valid_users(&self) -> Result<usize, AppError> {
+        Err(AppError::UserError("not supported".into()))
+    }
 }

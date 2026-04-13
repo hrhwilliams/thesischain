@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use alloy::{
+    network::{Ethereum, EthereumWallet},
+    primitives::Address,
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+};
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
-use end2::AppState;
+use end2::{AppState, EthDeviceKeyService};
 use mimalloc::MiMalloc;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::PeriodicReader;
@@ -138,12 +144,32 @@ async fn main() -> Result<(), std::io::Error> {
     oauth.insert("discord", discord_oauth);
     oauth.insert("google", google_oauth);
 
-    let auth = Arc::new(DbAuthService::new(pool.clone(), oauth)) as Arc<dyn AuthService>;
-    let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone())) as Arc<dyn DeviceKeyService>;
-    let otks = Arc::new(DbOtkService::new(pool.clone())) as Arc<dyn OtkService>;
-    let relay = Arc::new(DbMessageRelayService::new(pool.clone())) as Arc<dyn MessageRelayService>;
+    // Connect to anvil and find contract address for our key directory
+    let rpc_url = "http://anvil:8545";
+    let relayer_key = std::env::var("ETH_RELAYER_KEY").expect("ETH_RELAYER_KEY must be set");
+    let signer: PrivateKeySigner = relayer_key.parse().expect("invalid relayer private key");
+    let wallet = EthereumWallet::from(signer);
+    let provider = ProviderBuilder::new_with_network::<Ethereum>()
+        .wallet(wallet)
+        .connect(rpc_url)
+        .await
+        .expect("ethereum provider");
+    let contract_address = std::env::var("CONTRACT_ADDRESS")
+        .expect("CONTRACT_ADDRESS must be set")
+        .parse::<Address>()
+        .expect("invalid contract address");
+    let eth_device_keys = Arc::new(EthDeviceKeyService::new(
+        Arc::new(provider),
+        contract_address,
+        pool.clone(),
+    ));
 
-    let app_state = AppState::new(auth, device_keys, otks, relay, pool, signing_key);
+    let auth = Arc::new(DbAuthService::new(pool.clone(), oauth));
+    // let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone()));
+    let otks = Arc::new(DbOtkService::new(pool.clone()));
+    let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
+
+    let app_state = AppState::new(auth, eth_device_keys, otks, relay, pool, signing_key);
 
     let app = App::new(app_state);
     let listener = TcpListener::bind((ip, port)).await.expect("TcpListener");

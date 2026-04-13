@@ -4,8 +4,7 @@ RUN cargo install cargo-chef
 
 FROM chef AS planner
 COPY ./crates/end2 ./end2
-COPY ./crates/miner ./miner
-RUN echo '[workspace]\nmembers = ["end2", "miner"]\nresolver = "3"' > Cargo.toml
+RUN echo '[workspace]\nmembers = ["end2"]\nresolver = "3"' > Cargo.toml
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS backend-builder
@@ -15,7 +14,6 @@ RUN cargo install diesel_cli --no-default-features --features postgres
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY ./crates/end2 /build/end2
-COPY ./crates/miner /build/miner
 RUN cargo build --release
 
 FROM debian:trixie-slim AS runtime

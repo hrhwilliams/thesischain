@@ -15,6 +15,7 @@
     "pinia": "^3.0.4",
     "typescript": "^5.9.3",
     "uuid": "^13.0.0",
+    "viem": "^2.47.12",
     "vite-plugin-wasm": "^3.5.0",
     "vue": "^3.5.26",
     "vue-router": "^4.6.4"
@@ -23,6 +24,7 @@
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/tsconfig": "^0.8.1",
+    "prettier": "3.8.2",
     "vite": "^7.2.4",
     "vue-tsc": "^3.2.2"
   }

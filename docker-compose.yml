@@ -101,6 +101,14 @@ services:
       - prometheus
       - tempo
 
+  anvil:
+    build:
+      context: ./contract
+    networks:
+      - end2-network
+    volumes:
+      - contract_data:/shared
+
   backend:
     build:
       context: .
@@ -112,6 +120,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_SERVICE_NAME: "end2"
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      ETH_RPC_URL: "http://anvil:8545"
+    volumes:
+      - contract_data:/shared:ro
     depends_on:
       database:
         condition: service_healthy
@@ -130,6 +141,7 @@ services:
 
 volumes:
   pg_data:
+  contract_data:
 networks:
   end2-network:
     driver: bridge
