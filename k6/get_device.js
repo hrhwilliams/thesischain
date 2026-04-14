@@ -20,8 +20,6 @@ export default function () {
     { headers: { 'Content-Type': 'application/json' } }
   );
 
-  // Cookie jar holds the session from registration.
-
   const newDevice = http.post(`${BASE}/api/me/device`);
   let device_id, user_id;
   try {

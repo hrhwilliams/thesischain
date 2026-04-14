@@ -49,20 +49,23 @@ struct JsonRpcRequest<P: Serialize> {
 }
 
 #[derive(Deserialize)]
-struct JsonRpcResponse<R> {
-    result: R,
+#[serde(untagged)]
+enum JsonRpcResponse<R> {
+    Ok { result: R },
+    Err { error: serde_json::Value },
 }
 
 #[derive(Deserialize)]
-struct BroadcastResult {
-    check_tx: TxResult,
-    tx_result: TxResult,
-}
-
-#[derive(Deserialize)]
-struct TxResult {
+struct BroadcastSyncResult {
     code: u32,
     log: String,
+    hash: String,
+}
+
+#[derive(Serialize)]
+struct TxQueryParams {
+    hash: String,
+    prove: bool,
 }
 
 #[derive(Deserialize)]
@@ -124,19 +127,20 @@ impl CometBftDeviceKeyService {
         Sha256::digest(format!("{}", user.id)).into()
     }
 
-    async fn broadcast_tx(&self, tx: &KeyUploadTx) -> Result<(), AppError> {
+    // Submits tx and returns immediately after check_tx with the tx hash.
+    async fn broadcast_tx_sync(&self, tx: &KeyUploadTx) -> Result<String, AppError> {
         let tx_bytes = serde_json::to_vec(tx).map_err(|e| AppError::ValueError(e.to_string()))?;
 
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
             id: 1,
-            method: "broadcast_tx_commit",
+            method: "broadcast_tx_sync",
             params: BroadcastParams {
                 tx: BASE64_STANDARD.encode(&tx_bytes),
             },
         };
 
-        let res: JsonRpcResponse<BroadcastResult> = self
+        let res: JsonRpcResponse<BroadcastSyncResult> = self
             .http
             .post(&self.rpc_url)
             .json(&req)
@@ -147,21 +151,79 @@ impl CometBftDeviceKeyService {
             .await
             .map_err(|e| AppError::ValueError(e.to_string()))?;
 
-        if res.result.check_tx.code != 0 {
+        let result = match res {
+            JsonRpcResponse::Ok { result } => result,
+            JsonRpcResponse::Err { error } => {
+                return Err(AppError::ValueError(format!("rpc error: {error}")));
+            }
+        };
+
+        if result.code != 0 {
             return Err(AppError::ValueError(format!(
                 "check_tx rejected: {}",
-                res.result.check_tx.log
+                result.log
             )));
         }
 
-        if res.result.tx_result.code != 0 {
-            return Err(AppError::ValueError(format!(
-                "finalize_block rejected: {}",
-                res.result.tx_result.log
-            )));
-        }
+        Ok(result.hash)
+    }
 
-        Ok(())
+    // Polls until the tx with the given hash is committed in a block.
+    // CometBFT JSON-RPC expects `hash` as base64-encoded raw bytes.
+    async fn wait_for_tx(&self, hash: &str) -> Result<(), AppError> {
+        let hash_bytes =
+            hex::decode(hash).map_err(|e| AppError::ValueError(e.to_string()))?;
+        let hash_b64 = BASE64_STANDARD.encode(&hash_bytes);
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+
+        loop {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(AppError::ValueError(format!(
+                    "timed out waiting for tx {hash} to commit"
+                )));
+            }
+
+            let req = JsonRpcRequest {
+                jsonrpc: "2.0",
+                id: 1,
+                method: "tx",
+                params: TxQueryParams {
+                    hash: hash_b64.clone(),
+                    prove: false,
+                },
+            };
+
+            let resp: serde_json::Value = self
+                .http
+                .post(&self.rpc_url)
+                .json(&req)
+                .send()
+                .await
+                .map_err(|e| AppError::ValueError(e.to_string()))?
+                .json()
+                .await
+                .map_err(|e| AppError::ValueError(e.to_string()))?;
+
+            if resp.get("error").is_some() {
+                // Not yet committed — wait one poll interval and retry.
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                continue;
+            }
+
+            let code = resp["result"]["tx_result"]["code"].as_u64().unwrap_or(1);
+            if code != 0 {
+                let log = resp["result"]["tx_result"]["log"]
+                    .as_str()
+                    .unwrap_or("unknown error")
+                    .to_owned();
+                return Err(AppError::ValueError(format!(
+                    "finalize_block rejected: {log}"
+                )));
+            }
+
+            return Ok(());
+        }
     }
 
     async fn abci_query(&self, path: &str, data: &[u8]) -> Result<Vec<u8>, AppError> {
@@ -187,12 +249,18 @@ impl CometBftDeviceKeyService {
             .await
             .map_err(|e| AppError::ValueError(e.to_string()))?;
 
-        if res.result.response.code != 0 {
-            return Err(AppError::UserError(res.result.response.log));
+        let result = match res {
+            JsonRpcResponse::Ok { result } => result,
+            JsonRpcResponse::Err { error } => {
+                return Err(AppError::ValueError(format!("rpc error: {error}")));
+            }
+        };
+
+        if result.response.code != 0 {
+            return Err(AppError::UserError(result.response.log));
         }
 
-        let value = res
-            .result
+        let value = result
             .response
             .value
             .ok_or_else(|| AppError::ValueError("empty response value".into()))?;
@@ -301,12 +369,14 @@ impl DeviceKeyService for CometBftDeviceKeyService {
         let msg = serde_json::to_vec(&payload).map_err(|e| AppError::ValueError(e.to_string()))?;
         let sig = self.signing_key.sign(&msg);
 
-        // Send keys to CometBFT
-        self.broadcast_tx(&KeyUploadTx {
-            payload,
-            signature: BASE64_STANDARD_NO_PAD.encode(sig.to_bytes()),
-        })
-        .await?;
+        // Submit to CometBFT and wait for block inclusion before updating Postgres.
+        let hash = self
+            .broadcast_tx_sync(&KeyUploadTx {
+                payload,
+                signature: BASE64_STANDARD_NO_PAD.encode(sig.to_bytes()),
+            })
+            .await?;
+        self.wait_for_tx(&hash).await?;
 
         // Store keys in DB as well
         let x25519_db = x25519.as_bytes().to_vec();

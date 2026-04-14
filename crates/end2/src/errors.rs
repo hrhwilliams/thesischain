@@ -98,6 +98,16 @@ impl From<AppError> for RegistrationError {
 
 impl From<AppError> for ApiError {
     fn from(value: AppError) -> Self {
+        let api_error = Self::from_app_error(value);
+        if api_error.status >= 500 {
+            tracing::error!(status = api_error.status, message = %api_error.message, detail = ?api_error.detail, "internal error");
+        }
+        api_error
+    }
+}
+
+impl ApiError {
+    fn from_app_error(value: AppError) -> Self {
         match value {
             AppError::ArgonError(s) => Self {
                 status: StatusCode::INTERNAL_SERVER_ERROR.into(),

@@ -254,9 +254,64 @@ $ cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 ## CometBFT
 
+```sh
+docker run --rm -v "./config/comet:/cometbft" cometbft/cometbft testnet --v 4 --n 0 --o . --populate-persistent-peers --starting-ip-address 192.167.10.2
+
+for i in 0 1 2 3; do
+  sed -i -e 's/proxy_app = "tcp:\/\/127.0.0.1:/proxy_app = "tcp:\/\/abci'"$i"':/' ./config/comet/node$i/config/config.toml
+  sed -i -e 's/laddr = "tcp:\/\/127.0.0.1:/laddr = "tcp:\/\/0.0.0.0:/' ./config/comet/node$i/config/config.toml
+done
 ```
-$ docker run --rm -v "$(pwd)/config/comet:/cometbft" cometbft/cometbft testnet --v 4 --n 0 --o . --populate-persistent-peers --starting-ip-address 192.167.10.2
+
 ```
+$ k6 run --vus 250 --duration 5m get_test.js  
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: get_test.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 250 max VUs, 5m30s max duration (incl. graceful stop):
+              * default: 250 looping VUs for 5m0s (gracefulStop: 30s)
+
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 51666  169.833901/s
+    checks_succeeded...: 99.50% 51411 out of 51666
+    checks_failed......: 0.49%  255 out of 51666
+
+    ✗ 200
+      ↳  99% — ✓ 51411 / ✗ 255
+
+    HTTP
+    http_req_duration..............: avg=545.62ms min=41.28ms med=349.54ms max=3.01s  p(90)=1.33s p(95)=1.47s
+      { expected_response:true }...: avg=546.44ms min=41.28ms med=350.32ms max=3.01s  p(90)=1.34s p(95)=1.47s
+    http_req_failed................: 0.42% 255 out of 60277
+    http_reqs......................: 60277 198.139551/s
+
+    EXECUTION
+    iteration_duration.............: avg=8.82s    min=5.96s   med=8.89s    max=10.15s p(90)=9.14s p(95)=9.23s
+    iterations.....................: 8611  28.30565/s
+    vus............................: 224   min=224          max=250
+    vus_max........................: 250   min=250          max=250
+
+    NETWORK
+    data_received..................: 44 MB 144 kB/s
+    data_sent......................: 29 MB 96 kB/s
+
+running (5m04.2s), 000/250 VUs, 8611 complete and 0 interrupted iterations                                                                                                    
+default ✓ [======================================] 250 VUs  5m0s
+
+created 8569 users successfully
+~~~
 
 
 fb766b63301ccf29dc6ccaf00c1bc276b6cdb6448b6107763433ea4147b34723
