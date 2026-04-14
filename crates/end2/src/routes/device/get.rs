@@ -28,7 +28,10 @@ pub async fn get_user_device(
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let device = app_state.device_keys.get_device(&target_user, device_id).await?;
+    let device = app_state
+        .device_keys
+        .get_device(&target_user, device_id)
+        .await?;
     Ok(Json(device))
 }
 

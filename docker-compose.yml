@@ -109,6 +109,122 @@ services:
     volumes:
       - contract_data:/shared
 
+  abci0:
+    container_name: abci0
+    build:
+      context: .
+      dockerfile: crates/end2-cometbft/Dockerfile
+    env_file:
+      - .env
+    environment:
+      ABCI_SERVER_PUBKEY: ${SERVER_VERIFYING_KEY}
+    expose:
+      - "26658"
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.6
+
+  abci1:
+    container_name: abci1
+    build:
+      context: .
+      dockerfile: crates/end2-cometbft/Dockerfile
+    env_file:
+      - .env
+    environment:
+      ABCI_SERVER_PUBKEY: ${SERVER_VERIFYING_KEY}
+    expose:
+      - "26658"
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.7
+
+  abci2:
+    container_name: abci2
+    build:
+      context: .
+      dockerfile: crates/end2-cometbft/Dockerfile
+    env_file:
+      - .env
+    environment:
+      ABCI_SERVER_PUBKEY: ${SERVER_VERIFYING_KEY}
+    expose:
+      - "26658"
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.8
+
+  abci3:
+    container_name: abci3
+    build:
+      context: .
+      dockerfile: crates/end2-cometbft/Dockerfile
+    env_file:
+      - .env
+    environment:
+      ABCI_SERVER_PUBKEY: ${SERVER_VERIFYING_KEY}
+    expose:
+      - "26658"
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.9
+
+  node0:
+    container_name: node0
+    image: cometbft/cometbft
+    ports:
+      - "26656-26657:26656-26657"
+    volumes:
+      - ./config/comet/node0:/cometbft:Z
+    command: node --proxy_app=tcp://abci0:26658
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.2
+    depends_on:
+      - abci0
+
+  node1:
+    container_name: node1
+    image: cometbft/cometbft
+    ports:
+      - "26659-26660:26656-26657"
+    volumes:
+      - ./config/comet/node1:/cometbft:Z
+    command: node --proxy_app=tcp://abci1:26658
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.3
+    depends_on:
+      - abci1
+
+  node2:
+    container_name: node2
+    image: cometbft/cometbft
+    ports:
+      - "26661-26662:26656-26657"
+    volumes:
+      - ./config/comet/node2:/cometbft:Z
+    command: node --proxy_app=tcp://abci2:26658
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.4
+    depends_on:
+      - abci2
+
+  node3:
+    container_name: node3
+    image: cometbft/cometbft
+    ports:
+      - "26663-26664:26656-26657"
+    volumes:
+      - ./config/comet/node3:/cometbft:Z
+    command: node --proxy_app=tcp://abci3:26658
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.5
+    depends_on:
+      - abci3
+
   backend:
     build:
       context: .
@@ -121,6 +237,7 @@ services:
       OTEL_SERVICE_NAME: "end2"
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
       ETH_RPC_URL: "http://anvil:8545"
+      COMET_RPC_URL: "http://node0:26657"
     volumes:
       - contract_data:/shared:ro
     depends_on:
@@ -128,8 +245,11 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      node0:
+        condition: service_started
     networks:
       - end2-network
+      - localnet
 
   frontend:
     build:
@@ -145,3 +265,8 @@ volumes:
 networks:
   end2-network:
     driver: bridge
+  localnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.167.10.0/24

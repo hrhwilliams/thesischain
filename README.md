@@ -251,3 +251,60 @@ $ cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 $ cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 ```
+
+## CometBFT
+
+```
+$ docker run --rm -v "$(pwd)/config/comet:/cometbft" cometbft/cometbft testnet --v 4 --n 0 --o . --populate-persistent-peers --starting-ip-address 192.167.10.2
+```
+
+
+fb766b63301ccf29dc6ccaf00c1bc276b6cdb6448b6107763433ea4147b34723
+
+```sh
+$ curl "http://node0:26657/tx_search?query=\"key_add.user_hash='fb766b63301ccf29dc6ccaf00c1bc276b6cdb6448b6107763433ea4147b34723'\"&prove=false"
+```
+
+```json
+{
+   "jsonrpc":"2.0",
+   "id":-1,
+   "result":{
+      "txs":[
+         {
+            "hash":"C266DE4097BD1B99CD0345B8DA36E78DD19A09DAA53D08A670965CF9596F8B44",
+            "height":"74",
+            "index":0,
+            "tx_result":{
+               "code":0,
+               "data":null,
+               "log":"",
+               "info":"",
+               "gas_wanted":"0",
+               "gas_used":"0",
+               "events":[
+                  {
+                     "type":"key_add",
+                     "attributes":[
+                        {
+                           "key":"user_hash",
+                           "value":"fb766b63301ccf29dc6ccaf00c1bc276b6cdb6448b6107763433ea4147b34723",
+                           "index":true
+                        },
+                        {
+                           "key":"device_id",
+                           "value":"dev_019d8ab4-7b8f-7c62-81f1-00e4d5fd4159",
+                           "index":true
+                        }
+                     ]
+                  }
+               ],
+               "codespace":""
+            },
+            "tx":"eyJwYXlsb2FkIjp7InVzZXJfaGFzaCI6ImZiNzY2YjYzMzAxY2NmMjlkYzZjY2FmMDBjMWJjMjc2YjZjZGI2NDQ4YjYxMDc3NjM0MzNlYTQxNDdiMzQ3MjMiLCJkZXZpY2VfaWQiOiJkZXZfMDE5ZDhhYjQtN2I4Zi03YzYyLTgxZjEtMDBlNGQ1ZmQ0MTU5IiwieDI1NTE5IjoiUnFJajRxSnlGRVBnN1VxWFlQVXh1ZFllTGwwam9jY3ZZVThxZzRWTWxsZyIsImVkMjU1MTkiOiJWT3h1OGJDMGpobkt5czJ6Z3A5bDlnTjV3SmFPYkNtM1l3R0NCWkxkWlBNIn0sInNpZ25hdHVyZSI6ImVMV0hnc3dSQXBVZHJDbk0xbUIxdmpYenF5WktPNHc0OEYybWFlQVMxd0lyblJMNlJCNzg2UmtYeXowckR5R0hIUEFxUkVzV0JQYnUycUh6ZXh6NENnIn0="
+         }
+      ],
+      "total_count":"1"
+   }
+}
+```

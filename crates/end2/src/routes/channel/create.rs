@@ -26,7 +26,10 @@ pub async fn create_channel_with(
         .await?
         .ok_or(AppError::NoSuchUser)?;
 
-    let response = app_state.relay.create_channel_between(&user, &recipient).await?;
+    let response = app_state
+        .relay
+        .create_channel_between(&user, &recipient)
+        .await?;
 
     app_state
         .relay
@@ -75,7 +78,11 @@ pub async fn send_message(
     }
 
     // Send confirmation to the sender's device
-    if let Some(sender) = app_state.relay.get_broadcaster_for_device(sender_device_id).await {
+    if let Some(sender) = app_state
+        .relay
+        .get_broadcaster_for_device(sender_device_id)
+        .await
+    {
         let _ = sender
             .send(WsEvent::MessageReceived(MessageReceipt {
                 message_id: saved_message.id,

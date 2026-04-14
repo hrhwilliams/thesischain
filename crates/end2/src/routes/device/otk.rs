@@ -29,7 +29,10 @@ pub async fn upload_otks(
     Path(device_id): Path<DeviceId>,
     Json(inbound_otks): Json<InboundOtks>,
 ) -> Result<impl IntoResponse, ApiError> {
-    app_state.otks.upload_otks(&user, device_id, inbound_otks).await?;
+    app_state
+        .otks
+        .upload_otks(&user, device_id, inbound_otks)
+        .await?;
     Ok(Json(serde_json::json!({ "status": "success "})))
 }
 

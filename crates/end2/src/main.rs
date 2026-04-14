@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use alloy::{
@@ -10,7 +9,7 @@ use alloy::{
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
-use end2::{AppState, EthDeviceKeyService};
+use end2::{AppState, CometBftDeviceKeyService, DeviceKeyService, EthDeviceKeyService};
 use mimalloc::MiMalloc;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::PeriodicReader;
@@ -20,7 +19,7 @@ use tracing_subscriber::prelude::*;
 
 use end2::{
     App, AuthService, DbAuthService, DbDeviceKeyService, DbMessageRelayService, DbOtkService,
-    DeviceKeyService, MessageRelayService, OAuthHandler, OAuthInfo, OtkService,
+    MessageRelayService, OAuthHandler, OAuthInfo, OtkService,
 };
 
 #[global_allocator]
@@ -75,10 +74,46 @@ fn init_telemetry() {
     opentelemetry::global::set_meter_provider(meter_provider.clone());
 }
 
+async fn setup_eth_device_keys(
+    pool: Pool<ConnectionManager<PgConnection>>,
+) -> Arc<dyn DeviceKeyService> {
+    let rpc_url = std::env::var("ETH_RPC_URL").expect("ETH_RPC_URL must be set");
+    let relayer_key = std::env::var("ETH_RELAYER_KEY").expect("ETH_RELAYER_KEY must be set");
+    let contract_address = std::env::var("CONTRACT_ADDRESS")
+        .expect("CONTRACT_ADDRESS must be set")
+        .parse::<Address>()
+        .expect("invalid contract address");
+
+    let signer: PrivateKeySigner = relayer_key.parse().expect("invalid relayer private key");
+    let wallet = EthereumWallet::from(signer);
+    let provider = ProviderBuilder::new_with_network::<Ethereum>()
+        .wallet(wallet)
+        .connect(&rpc_url)
+        .await
+        .expect("ethereum provider");
+
+    Arc::new(EthDeviceKeyService::new(
+        Arc::new(provider),
+        contract_address,
+        pool,
+    ))
+}
+
+fn setup_comet_device_keys(
+    pool: Pool<ConnectionManager<PgConnection>>,
+    signing_key: Arc<SigningKey>,
+) -> Arc<dyn DeviceKeyService> {
+    let rpc_url = std::env::var("COMET_RPC_URL").expect("COMET_RPC_URL must be set");
+    Arc::new(CometBftDeviceKeyService::new(rpc_url, signing_key, pool))
+}
+
+fn setup_db_device_keys(pool: Pool<ConnectionManager<PgConnection>>) -> Arc<dyn DeviceKeyService> {
+    Arc::new(DbDeviceKeyService::new(pool))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     dotenvy::dotenv().ok();
-
     init_telemetry();
 
     // IP and port to run server on
@@ -140,36 +175,19 @@ async fn main() -> Result<(), std::io::Error> {
         .build(manager)
         .expect("Failed to connect to Postgres");
 
-    let mut oauth: HashMap<&'static str, OAuthHandler> = HashMap::new();
+    let mut oauth = std::collections::HashMap::new();
     oauth.insert("discord", discord_oauth);
     oauth.insert("google", google_oauth);
 
-    // Connect to anvil and find contract address for our key directory
-    let rpc_url = "http://anvil:8545";
-    let relayer_key = std::env::var("ETH_RELAYER_KEY").expect("ETH_RELAYER_KEY must be set");
-    let signer: PrivateKeySigner = relayer_key.parse().expect("invalid relayer private key");
-    let wallet = EthereumWallet::from(signer);
-    let provider = ProviderBuilder::new_with_network::<Ethereum>()
-        .wallet(wallet)
-        .connect(rpc_url)
-        .await
-        .expect("ethereum provider");
-    let contract_address = std::env::var("CONTRACT_ADDRESS")
-        .expect("CONTRACT_ADDRESS must be set")
-        .parse::<Address>()
-        .expect("invalid contract address");
-    let eth_device_keys = Arc::new(EthDeviceKeyService::new(
-        Arc::new(provider),
-        contract_address,
-        pool.clone(),
-    ));
+    let signing_key = Arc::new(signing_key);
+
+    let device_keys = setup_comet_device_keys(pool.clone(), signing_key.clone());
 
     let auth = Arc::new(DbAuthService::new(pool.clone(), oauth));
-    // let device_keys = Arc::new(DbDeviceKeyService::new(pool.clone()));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
     let relay = Arc::new(DbMessageRelayService::new(pool.clone()));
 
-    let app_state = AppState::new(auth, eth_device_keys, otks, relay, pool, signing_key);
+    let app_state = AppState::new(auth, device_keys, otks, relay, pool, signing_key);
 
     let app = App::new(app_state);
     let listener = TcpListener::bind((ip, port)).await.expect("TcpListener");

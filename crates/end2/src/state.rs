@@ -34,7 +34,7 @@ impl AppState {
         otks: Arc<dyn OtkService>,
         relay: Arc<dyn MessageRelayService>,
         pool: Pool<ConnectionManager<PgConnection>>,
-        signing_key: SigningKey,
+        signing_key: Arc<SigningKey>,
     ) -> Self {
         let (broadcaster, _) = broadcast::channel(256);
 
@@ -44,7 +44,7 @@ impl AppState {
             otks,
             relay,
             web_sessions: CookieWebSessionService::new(pool.clone()),
-            signing_key: Arc::new(signing_key),
+            signing_key,
             pool,
             broadcaster,
         }

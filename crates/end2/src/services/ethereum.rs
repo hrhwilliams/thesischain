@@ -68,6 +68,9 @@ where
             .map_err(|e| AppError::PoolError(e.to_string()))
     }
 
+    fn user_hash(user: &User) -> FixedBytes<32> {
+        keccak256(format!("{}", user.id).as_bytes())
+    }
 }
 
 #[async_trait]
@@ -95,7 +98,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_device(&self, user: &User, device_id: DeviceId) -> Result<Device, AppError> {
         let contract = KeyDirectory::new(self.contract_address, self.provider.clone());
-        let user_hash: FixedBytes<32> = keccak256(user.id.into_inner().as_bytes());
+        let user_hash = Self::user_hash(user);
 
         let device = contract
             .get_device(user_hash, device_id.into_inner().as_u128())
@@ -115,7 +118,7 @@ where
     #[tracing::instrument(skip(self))]
     async fn get_all_devices(&self, user: &User) -> Result<Vec<Device>, AppError> {
         let contract = KeyDirectory::new(self.contract_address, self.provider.clone());
-        let user_hash: FixedBytes<32> = keccak256(user.id.into_inner().as_bytes());
+        let user_hash = Self::user_hash(user);
 
         let devices = contract
             .get_all_devices(user_hash)
@@ -150,7 +153,7 @@ where
         let x25519_bytes: FixedBytes<32> = FixedBytes::from_slice(x25519.as_bytes());
         let ed25519_bytes: FixedBytes<32> = FixedBytes::from_slice(ed25519.as_bytes());
 
-        let user_hash: FixedBytes<32> = keccak256(user.id.into_inner().as_bytes());
+        let user_hash = Self::user_hash(user);
         let device_id_u128 = device_id.into_inner().as_u128();
 
         let contract = KeyDirectory::new(self.contract_address, self.provider.clone());
@@ -220,7 +223,11 @@ where
         .await??;
 
         for user in &users {
-            if self.get_all_devices(user).await.is_ok_and(|d| !d.is_empty()) {
+            if self
+                .get_all_devices(user)
+                .await
+                .is_ok_and(|d| !d.is_empty())
+            {
                 have_devices += 1;
             }
         }

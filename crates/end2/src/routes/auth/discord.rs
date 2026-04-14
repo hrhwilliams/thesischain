@@ -19,7 +19,11 @@ pub async fn get_discord_oauth_url(
         .map_err(AppError::from)?;
     let web_session = app_state
         .web_sessions
-        .insert_into_session(web_session, "csrf_token".to_string(), csrf_token.into_secret())
+        .insert_into_session(
+            web_session,
+            "csrf_token".to_string(),
+            csrf_token.into_secret(),
+        )
         .await?;
     app_state
         .web_sessions

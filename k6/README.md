@@ -1,3 +1,5 @@
 # K6 load tests
 
-`k6 run --vus 10 --duration 30s get_test.js`
+```
+k6 run --vus 250 --duration 5m get_test.js  
+```

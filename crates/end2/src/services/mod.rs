@@ -1,4 +1,5 @@
 mod auth;
+mod cometbft;
 mod device;
 mod ethereum;
 mod otk;
@@ -7,6 +8,7 @@ mod traits;
 mod web_session;
 
 pub use auth::*;
+pub use cometbft::*;
 pub use device::*;
 pub use ethereum::*;
 pub use otk::*;
