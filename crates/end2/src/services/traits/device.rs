@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{AppError, Device, DeviceId, InboundDevice, User};
+use crate::{AppError, Device, DeviceId, HistoricalKey, InboundDevice, User};
 
 /// How the backend stores and distributes long-term device keys
 #[async_trait]
@@ -17,5 +17,13 @@ pub trait DeviceKeyService: Send + Sync {
 
     async fn get_valid_users(&self) -> Result<usize, AppError> {
         Err(AppError::UserError("not supported".into()))
+    }
+
+    async fn get_device_key_history(
+        &self,
+        _user: &User,
+        _device_id: DeviceId,
+    ) -> Result<Vec<HistoricalKey>, AppError> {
+        Err(AppError::UserError("key history not supported by this backend".into()))
     }
 }

@@ -53,6 +53,10 @@ impl Api {
                 get(device::get_user_device),
             )
             .route(
+                "/user/{user_id}/device/{device_id}/history",
+                get(device::get_user_device_key_history),
+            )
+            .route(
                 "/user/{user_id}/device/{device_id}/otk",
                 post(device::get_user_device_otk),
             )

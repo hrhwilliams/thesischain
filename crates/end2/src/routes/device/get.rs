@@ -60,3 +60,23 @@ pub async fn get_user_devices(
     let devices = app_state.device_keys.get_all_devices(&target_user).await?;
     Ok(Json(devices))
 }
+
+#[allow(clippy::used_underscore_binding)]
+#[tracing::instrument(skip(app_state))]
+pub async fn get_user_device_key_history(
+    State(app_state): State<AppState>,
+    _user: User,
+    Path((user_id, device_id)): Path<(UserId, DeviceId)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let target_user = app_state
+        .auth
+        .get_user_info(user_id)
+        .await?
+        .ok_or(AppError::NoSuchUser)?;
+
+    let history = app_state
+        .device_keys
+        .get_device_key_history(&target_user, device_id)
+        .await?;
+    Ok(Json(history))
+}

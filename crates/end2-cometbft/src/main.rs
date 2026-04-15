@@ -10,13 +10,15 @@ use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::abci as proto;
 
 // The signable payload. Serialized to canonical JSON and signed by the server.
-// user_hash is hex; x25519 and ed25519 are unpadded base64.
+// user_hash is hex; x25519, ed25519, and signature are unpadded base64.
+// signature is the device self-signature (ed25519 over x25519||ed25519 bytes).
 #[derive(serde::Serialize, serde::Deserialize)]
 struct KeyPayload {
     user_hash: String,
     device_id: String,
     x25519: String,
     ed25519: String,
+    signature: String,
 }
 
 fn decode_key32(s: &str) -> Result<[u8; 32], &'static str> {

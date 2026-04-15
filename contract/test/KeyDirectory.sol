@@ -13,17 +13,19 @@ contract KeyDirectoryTest is Test {
     uint128 constant DEVICE_ID = 12345;
     bytes32 constant X25519_KEY = "x25519_dummy_key";
     bytes32 constant ED25519_KEY = "ed25519_dummy_key";
+    bytes constant SIGNATURE = "dummy_signature";
 
     uint128 constant DEVICE_ID_2 = 67890;
     bytes32 constant X25519_KEY_2 = "x25519_dummy_key_2";
     bytes32 constant ED25519_KEY_2 = "ed25519_dummy_key_2";
+    bytes constant SIGNATURE_2 = "dummy_signature";
 
     function setUp() public {
         key_directory = new KeyDirectory();
     }
 
     function test_add_then_get_device() public {
-        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY);
+        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, SIGNATURE);
 
         KeyDirectory.Device memory device = key_directory.get_device(USER_HASH, DEVICE_ID);
 
@@ -33,8 +35,8 @@ contract KeyDirectoryTest is Test {
     }
 
     function test_get_all_devices() public {
-        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY);
-        key_directory.add_device(USER_HASH, DEVICE_ID_2, X25519_KEY_2, ED25519_KEY_2, 1);
+        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, SIGNATURE);
+        key_directory.add_device(USER_HASH, DEVICE_ID_2, X25519_KEY_2, ED25519_KEY_2, SIGNATURE_2, 1);
 
         KeyDirectory.Device[] memory devices = key_directory.get_all_devices(USER_HASH);
 
@@ -60,14 +62,14 @@ contract KeyDirectoryTest is Test {
     function test_add_device_emits_event() public {
         vm.expectEmit(true, false, false, true);
         emit DeviceAdded(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, block.timestamp);
-        key_directory.add_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, 0);
+        key_directory.add_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, SIGNATURE, 0);
     }
 
     function test_add_device_immutable() public {
-        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY);
+        key_directory.add_first_device(USER_HASH, DEVICE_ID, X25519_KEY, ED25519_KEY, SIGNATURE);
 
         // DEVICE_ID is the same, which would overwrite the previous device
         vm.expectRevert("Device ID already exists");
-        key_directory.add_device(USER_HASH, DEVICE_ID, X25519_KEY_2, ED25519_KEY_2, 1);
+        key_directory.add_device(USER_HASH, DEVICE_ID, X25519_KEY_2, ED25519_KEY_2, SIGNATURE_2, 1);
     }
 }

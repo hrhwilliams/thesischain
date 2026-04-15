@@ -3,7 +3,7 @@ use ed25519_dalek::Signature;
 use serde::{Deserialize, Serialize};
 use vodozemac::{Curve25519PublicKey, Ed25519PublicKey, Ed25519Signature};
 
-use crate::{AppError, DeviceId, UserId, serialize_as_base64_opt};
+use crate::{AppError, DeviceId, UserId, serialize_as_base64, serialize_as_base64_opt};
 
 #[derive(Clone, Debug, Queryable, Selectable, Serialize)]
 #[diesel(table_name = crate::schema::device)]
@@ -16,6 +16,18 @@ pub struct Device {
     pub ed25519: Option<Vec<u8>>,
     #[serde(serialize_with = "serialize_as_base64_opt")]
     pub x25519: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoricalKey {
+    pub device_id: DeviceId,
+    pub chain_height: u64,
+    #[serde(serialize_with = "serialize_as_base64")]
+    pub x25519: Vec<u8>,
+    #[serde(serialize_with = "serialize_as_base64")]
+    pub ed25519: Vec<u8>,
+    #[serde(serialize_with = "serialize_as_base64")]
+    pub signature: Vec<u8>,
 }
 
 #[derive(Insertable)]

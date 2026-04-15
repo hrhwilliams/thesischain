@@ -11,25 +11,27 @@ use diesel::{
     SelectableHelper, r2d2::ConnectionManager,
 };
 use r2d2::Pool;
-use vodozemac::{Curve25519PublicKey, Ed25519PublicKey};
+use vodozemac::{Curve25519PublicKey, Ed25519PublicKey, Ed25519Signature};
 
 use crate::{
-    AppError, Device, DeviceId, DeviceKeyService, InboundDevice, NewDevice, User,
+    AppError, Device, DeviceId, DeviceKeyService, HistoricalKey, InboundDevice, NewDevice, User,
     schema::{device, user as user_table},
 };
 
 alloy::sol! {
     #[sol(rpc)]
     contract KeyDirectory {
-            struct Device {
-                uint128 device_id;
-                uint128 flags;
-                bytes32 x25519;
-                bytes32 ed25519;
-            }
+        struct Device {
+            uint128 device_id;
+            uint128 flags;
+            bytes32 x25519;
+            bytes32 ed25519;
+        }
 
-        function add_first_device(bytes32 userHash, uint128 deviceId, bytes32 x25519, bytes32 ed25519) public;
-        function add_device(bytes32 userHash, uint128 deviceId, bytes32 x25519, bytes32 ed25519, uint256 nonce) public;
+        event DeviceAdded(bytes32 indexed user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, bytes signature, uint256 timestamp);
+
+        function add_first_device(bytes32 userHash, uint128 deviceId, bytes32 x25519, bytes32 ed25519, bytes signature) public;
+        function add_device(bytes32 userHash, uint128 deviceId, bytes32 x25519, bytes32 ed25519, bytes signature, uint256 nonce) public;
         function get_device(bytes32 user_hash, uint128 device_id) public view returns (Device memory);
         function get_all_devices(bytes32 user_hash) public view returns (Device[] memory);
         function get_nonce(bytes32 userHash) public view returns (uint256);
@@ -152,6 +154,9 @@ where
 
         let x25519_bytes: FixedBytes<32> = FixedBytes::from_slice(x25519.as_bytes());
         let ed25519_bytes: FixedBytes<32> = FixedBytes::from_slice(ed25519.as_bytes());
+        let sig = Ed25519Signature::from_base64(&device_keys.signature)
+            .map_err(|_| AppError::InvalidSignature)?;
+        let sig_bytes = alloy::primitives::Bytes::from(sig.to_bytes().to_vec());
 
         let user_hash = Self::user_hash(user);
         let device_id_u128 = device_id.into_inner().as_u128();
@@ -166,7 +171,7 @@ where
 
         let send = if nonce == U256::ZERO {
             contract
-                .add_first_device(user_hash, device_id_u128, x25519_bytes, ed25519_bytes)
+                .add_first_device(user_hash, device_id_u128, x25519_bytes, ed25519_bytes, sig_bytes)
                 .send()
                 .await
                 .map_err(|e| AppError::ValueError(e.to_string()))?
@@ -177,6 +182,7 @@ where
                     device_id_u128,
                     x25519_bytes,
                     ed25519_bytes,
+                    sig_bytes,
                     nonce,
                 )
                 .send()
@@ -233,5 +239,50 @@ where
         }
 
         Ok(have_devices)
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_device_key_history(
+        &self,
+        user: &User,
+        device_id: DeviceId,
+    ) -> Result<Vec<HistoricalKey>, AppError> {
+        use alloy::{eips::BlockNumberOrTag, rpc::types::Filter, sol_types::SolEvent};
+
+        let user_hash = Self::user_hash(user);
+        let target_device_id = device_id.into_inner().as_u128();
+
+        let filter = Filter::new()
+            .address(self.contract_address)
+            .event_signature(KeyDirectory::DeviceAdded::SIGNATURE_HASH)
+            .topic1(user_hash)
+            .from_block(BlockNumberOrTag::Earliest)
+            .to_block(BlockNumberOrTag::Latest);
+
+        let logs = self
+            .provider
+            .get_logs(&filter)
+            .await
+            .map_err(|e| AppError::ValueError(e.to_string()))?;
+
+        let history = logs
+            .into_iter()
+            .filter_map(|log| {
+                let chain_height = log.block_number?;
+                let event = KeyDirectory::DeviceAdded::decode_log(&log.inner).ok()?;
+                if event.device_id != target_device_id {
+                    return None;
+                }
+                Some(HistoricalKey {
+                    device_id,
+                    chain_height,
+                    x25519: event.x25519.to_vec(),
+                    ed25519: event.ed25519.to_vec(),
+                    signature: event.signature.to_vec(),
+                })
+            })
+            .collect();
+
+        Ok(history)
     }
 }

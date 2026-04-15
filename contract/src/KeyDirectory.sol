@@ -20,9 +20,9 @@ contract KeyDirectory {
     mapping(bytes32 => Device[]) private devices;
     mapping(bytes32 => uint256) private nonces;
 
-    event DeviceAdded(bytes32 indexed user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, uint256 timestamp);
+    event DeviceAdded(bytes32 indexed user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, bytes signature, uint256 timestamp);
 
-    function add_first_device(bytes32 user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519) public {
+    function add_first_device(bytes32 user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, bytes memory signature) public {
         require(msg.sender == relayer, "Unauthorized");
         require(devices[user_hash].length == 0, "Additional devices must be signed");
 
@@ -30,10 +30,10 @@ contract KeyDirectory {
 
         nonces[user_hash] = 1;
 
-        emit DeviceAdded(user_hash, device_id, x25519, ed25519, block.timestamp);
+        emit DeviceAdded(user_hash, device_id, x25519, ed25519, signature, block.timestamp);
     }
 
-    function add_device(bytes32 user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, uint256 nonce) public {
+    function add_device(bytes32 user_hash, uint128 device_id, bytes32 x25519, bytes32 ed25519, bytes memory signature, uint256 nonce) public {
         require(msg.sender == relayer, "Unauthorized");
         require(nonce == nonces[user_hash]);
 
@@ -46,7 +46,7 @@ contract KeyDirectory {
 
         nonces[user_hash] += 1;
 
-        emit DeviceAdded(user_hash, device_id, x25519, ed25519, block.timestamp);
+        emit DeviceAdded(user_hash, device_id, x25519, ed25519, signature, block.timestamp);
     }
 
     function get_device(bytes32 user_hash, uint128 device_id) public view returns (Device memory) {

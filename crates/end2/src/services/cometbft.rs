@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use vodozemac::{Curve25519PublicKey, Ed25519PublicKey};
 
 use crate::{
-    AppError, Device, DeviceId, DeviceKeyService, InboundDevice, NewDevice, User,
+    AppError, Device, DeviceId, DeviceKeyService, HistoricalKey, InboundDevice, NewDevice, User,
     schema::{device, user as user_table},
 };
 
@@ -26,9 +26,11 @@ struct KeyPayload {
     device_id: String,
     x25519: String,
     ed25519: String,
+    // base64 device self-signature (ed25519 over x25519||ed25519 bytes)
+    signature: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct KeyUploadTx {
     payload: KeyPayload,
     signature: String,
@@ -90,6 +92,26 @@ struct AbciQueryParams {
     path: String,
     data: String,
     prove: bool,
+}
+
+#[derive(Serialize)]
+struct TxSearchParams {
+    query: String,
+    prove: bool,
+    page: String,
+    per_page: String,
+    order_by: String,
+}
+
+#[derive(Deserialize)]
+struct TxSearchResult {
+    txs: Vec<TxResultInfo>,
+}
+
+#[derive(Deserialize)]
+struct TxResultInfo {
+    height: String, // CometBFT returns block height as a string
+    tx: String,     // base64-encoded raw tx bytes
 }
 
 #[derive(Clone)]
@@ -269,6 +291,55 @@ impl CometBftDeviceKeyService {
             .decode(&value)
             .map_err(|e| AppError::InvalidB64(e.to_string()))
     }
+
+    // Returns all committed txs matching the CometBFT event query, oldest first.
+    // Each entry is (block_height, tx).
+    async fn tx_search(&self, query: &str) -> Result<Vec<(u64, KeyUploadTx)>, AppError> {
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tx_search",
+            params: TxSearchParams {
+                query: query.to_owned(),
+                prove: false,
+                page: "1".to_owned(),
+                per_page: "100".to_owned(),
+                order_by: "asc".to_owned(),
+            },
+        };
+
+        let res: JsonRpcResponse<TxSearchResult> = self
+            .http
+            .post(&self.rpc_url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| AppError::ValueError(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| AppError::ValueError(e.to_string()))?;
+
+        let result = match res {
+            JsonRpcResponse::Ok { result } => result,
+            JsonRpcResponse::Err { error } => {
+                return Err(AppError::ValueError(format!("rpc error: {error}")));
+            }
+        };
+
+        result
+            .txs
+            .into_iter()
+            .map(|info| {
+                let height = info.height.parse::<u64>().unwrap_or(0);
+                let bytes = BASE64_STANDARD
+                    .decode(&info.tx)
+                    .map_err(|e| AppError::InvalidB64(e.to_string()))?;
+                let tx = serde_json::from_slice::<KeyUploadTx>(&bytes)
+                    .map_err(|e| AppError::ValueError(e.to_string()))?;
+                Ok((height, tx))
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -364,6 +435,7 @@ impl DeviceKeyService for CometBftDeviceKeyService {
             device_id: device_id.to_string(),
             x25519: BASE64_STANDARD_NO_PAD.encode(x25519_bytes),
             ed25519: BASE64_STANDARD_NO_PAD.encode(ed25519_bytes),
+            signature: keys.signature.clone(),
         };
 
         let msg = serde_json::to_vec(&payload).map_err(|e| AppError::ValueError(e.to_string()))?;
@@ -416,5 +488,38 @@ impl DeviceKeyService for CometBftDeviceKeyService {
         }
 
         Ok(have_devices)
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn get_device_key_history(
+        &self,
+        user: &User,
+        device_id: DeviceId,
+    ) -> Result<Vec<HistoricalKey>, AppError> {
+        let user_hash_hex = hex::encode(Self::user_hash(user));
+        let device_id_str = device_id.to_string();
+
+        // key_add fires on first registration, key_update on each subsequent change.
+        // Both are queried ascending by height so history is chronological.
+        let mut history = Vec::new();
+        for event_type in &["key_add", "key_update"] {
+            let query = format!(
+                "{event_type}.user_hash='{user_hash_hex}' AND {event_type}.device_id='{device_id_str}'"
+            );
+            for (chain_height, tx) in self.tx_search(&query).await? {
+                let x25519 = BASE64_STANDARD_NO_PAD
+                    .decode(&tx.payload.x25519)
+                    .map_err(|e| AppError::InvalidB64(e.to_string()))?;
+                let ed25519 = BASE64_STANDARD_NO_PAD
+                    .decode(&tx.payload.ed25519)
+                    .map_err(|e| AppError::InvalidB64(e.to_string()))?;
+                let signature = BASE64_STANDARD_NO_PAD
+                    .decode(&tx.payload.signature)
+                    .map_err(|e| AppError::InvalidB64(e.to_string()))?;
+                history.push(HistoricalKey { device_id, chain_height, x25519, ed25519, signature });
+            }
+        }
+
+        Ok(history)
     }
 }
