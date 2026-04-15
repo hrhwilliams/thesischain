@@ -373,6 +373,20 @@ $ k6 run --vus 25 --iterations 250 --summary-trend-stats="avg,min,med,max,p(90),
 
     CUSTOM
     upload_device_ms...............: avg=11.61s min=6.45s   med=13.72s   max=13.81s p(90)=13.76s p(99)=13.8s
+
+
+
+$ k6 run --vus 25 --iterations 250 --summary-trend-stats="avg,min,med,max,p(90),p(99)" set_device.js
+  █ TOTAL RESULTS
+
+    checks_total.......: 250     2.224869/s
+    checks_succeeded...: 100.00% 250 out of 250
+    checks_failed......: 0.00%   0 out of 250
+
+    ✓ put device 200
+
+    CUSTOM
+    upload_device_ms...............: avg=10.99s min=6.7s    med=13.75s   max=13.82s p(90)=13.78s p(99)=13.82s
 ```
 
 ```
