@@ -483,3 +483,79 @@ $ k6 run --vus 100 --iterations 1000 --summary-trend-stats="avg,min,med,max,p(90
     CUSTOM
     upload_device_ms...............: avg=919.28ms min=559ms    med=833ms    max=2.29s p(90)=1.58s    p(99)=2s
 ```
+
+## Device history
+
+```
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js  
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    74.182105/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=66.15ms  min=42ms     med=61ms    max=143ms p(90)=91.1ms p(99)=120.04ms
+
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js  
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    78.829737/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=65.56ms  min=42ms    med=62ms     max=124ms p(90)=83ms  p(99)=109.02ms
+
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js  
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    74.089526/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=64.5ms   min=46ms     med=60ms     max=171ms p(90)=73ms  p(99)=148.07ms
+
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    72.935599/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=65.78ms  min=47ms     med=60ms     max=162ms p(90)=85ms  p(99)=139.01ms
+
+
+
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    73.245906/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=67.4ms   min=44ms     med=62ms     max=180ms p(90)=86.1ms p(99)=145.01ms
+```

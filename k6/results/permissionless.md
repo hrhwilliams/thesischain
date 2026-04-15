@@ -462,62 +462,81 @@ $ k6 run --vus 100 --iterations 1000 --summary-trend-stats="avg,min,med,max,p(90
 ## Device history
 
 ```
-$ k6 run --vus 5 --iterations 50 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js  
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js  
 
   █ TOTAL RESULTS
 
-    checks_total.......: 100     0.837566/s
-    checks_succeeded...: 100.00% 100 out of 100
-    checks_failed......: 0.00%   0 out of 100
+    checks_total.......: 1000    8.363399/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
 
     ✓ get history 200
     ✓ has entries
 
     CUSTOM
-    get_device_history_ms..........: avg=56.62ms min=49ms    med=56ms    max=65ms   p(90)=61.1ms p(99)=64.5ms
+    get_device_history_ms..........: avg=63.34ms min=48ms   med=63ms     max=78ms   p(90)=70ms  p(99)=75.01ms
 
 
 
-$ k6 run --vus 5 --iterations 50 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js 
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js
+
   █ TOTAL RESULTS
 
-    checks_total.......: 100     0.834659/s
-    checks_succeeded...: 100.00% 100 out of 100
-    checks_failed......: 0.00%   0 out of 100
+    checks_total.......: 1000    8.420446/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
 
     ✓ get history 200
     ✓ has entries
 
     CUSTOM
-    get_device_history_ms..........: avg=66.3ms min=55ms    med=66ms    max=81ms   p(90)=75.09ms p(99)=80.02ms
+    get_device_history_ms..........: avg=64.41ms min=47ms    med=64ms     max=84ms   p(90)=75ms   p(99)=79.03ms
 
 
 
-$ k6 run --vus 5 --iterations 50 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js 
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js
+
   █ TOTAL RESULTS
 
-    checks_total.......: 100     0.837446/s
-    checks_succeeded...: 100.00% 100 out of 100
-    checks_failed......: 0.00%   0 out of 100
+    checks_total.......: 1000    8.417449/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
 
     ✓ get history 200
     ✓ has entries
 
     CUSTOM
-    get_device_history_ms..........: avg=60.92ms min=49ms    med=60ms    max=94ms   p(90)=67.09ms p(99)=83.7ms
+    get_device_history_ms..........: avg=63.11ms min=47ms    med=63ms    max=79ms   p(90)=70ms   p(99)=76ms
 
 
 
-$ k6 run --vus 5 --iterations 50 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js 
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js 
+
   █ TOTAL RESULTS
 
-    checks_total.......: 100     0.837236/s
-    checks_succeeded...: 100.00% 100 out of 100
-    checks_failed......: 0.00%   0 out of 100
+    checks_total.......: 1000    8.413997/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
 
     ✓ get history 200
     ✓ has entries
 
     CUSTOM
-    get_device_history_ms..........: avg=60.66ms min=52ms    med=61ms    max=74ms   p(90)=66.09ms p(99)=71.05ms
+    get_device_history_ms..........: avg=64.84ms min=47ms   med=66ms     max=106ms  p(90)=73ms   p(99)=78ms
+
+
+
+$ k6 run --vus 50 --iterations 500 --summary-trend-stats="avg,min,med,max,p(90),p(99)" get_device_history.js
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1000    8.414473/s
+    checks_succeeded...: 100.00% 1000 out of 1000
+    checks_failed......: 0.00%   0 out of 1000
+
+    ✓ get history 200
+    ✓ has entries
+
+    CUSTOM
+    get_device_history_ms..........: avg=67.15ms min=47ms    med=67ms     max=85ms   p(90)=74.1ms p(99)=79ms
 ```
