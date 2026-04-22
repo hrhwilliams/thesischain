@@ -254,6 +254,8 @@ $ cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 ## CometBFT
 
+### 24-hour test
+
 ```sh
 docker run --rm -v "./config/comet:/cometbft" cometbft/cometbft testnet --v 4 --n 0 --o . --populate-persistent-peers --starting-ip-address 192.167.10.2
 
@@ -262,6 +264,89 @@ for i in 0 1 2 3; do
   sed -i -e 's/laddr = "tcp:\/\/127.0.0.1:/laddr = "tcp:\/\/0.0.0.0:/' ./config/comet/node$i/config/config.toml
 done
 ```
+
+create some users
+```sh
+k6 run --vus 250 --duration 2m set_device.js
+```
+
+go to postgres and export users
+
+```sql
+copy (
+  select json_agg(json_build_object('user_id', user_id, 'device_id', id)) 
+  from device where x25519 is not null
+) to '/var/lib/postgresql/data/user_devices.json';
+-- 10275 users
+```
+
+
+start prometheus
+```sh
+docker run -p 9090:9090 prom/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --web.enable-remote-write-receiver
+```
+
+start k6
+```sh
+$env:K6_PROMETHEUS_RW_FLUSH_PERIOD="5s"; $env:K6_PROMETHEUS_RW_TREND_STATS="avg,p(50),p(99)"; k6 run --out experimental-prometheus-rw=http://localhost:9090/api/v1/write .\cometbft_test.js
+```
+
+start grafana
+```sh
+# 3001 because 3000 taken by service grafana
+# user: admin ; pwd: admin
+docker run -p 3001:3000 grafana/grafana
+```
+
+add prometheus at `http://host.docker.internal:9090` as a data source. can add k6 dashboard with ID 19665
+
+14h45m (2026-04-22 11:07:05) into run, killed node3
+15h18m (2026-04-22 11:40:50) into run, restarted node3
+
+```
+  █ TOTAL RESULTS 
+
+    checks_total.......: 29928775 445.164303/s
+    checks_succeeded...: 99.53%   29789754 out of 29928775
+    checks_failed......: 0.46%    139021 out of 29928775
+
+    ✗ get device 200
+      ↳  99% — ✓ 12550978 / ✗ 53607
+    ✗ has x25519
+      ↳  99% — ✓ 12550978 / ✗ 53607
+    ✗ get history 200
+      ↳  99% — ✓ 1567842 / ✗ 6668
+    ✗ has entries
+      ↳  99% — ✓ 1567842 / ✗ 6668
+    ✗ put device 200
+      ↳  98% — ✓ 1552114 / ✗ 18471
+
+    CUSTOM
+    get_device_history_ms..........: avg=92.04ms  min=35ms    med=66ms    max=27.55s p(90)=160ms    p(95)=200ms
+    get_device_ms..................: avg=93.15ms  min=35ms    med=67ms    max=27.58s p(90)=162ms    p(95)=201ms
+    upload_device_ms...............: avg=3.12s    min=39ms    med=2.67s   max=35.28s p(90)=5.1s     p(95)=7.42s
+
+    HTTP
+    http_req_duration..............: avg=350.63ms min=35.05ms med=72.02ms max=35.28s p(90)=269.36ms p(95)=2.33s
+      { expected_response:true }...: avg=351.31ms min=35.05ms med=72ms    max=33.3s  p(90)=269.53ms p(95)=2.33s
+    http_req_failed................: 0.55%    105840 out of 18902026
+    http_reqs......................: 18902026 281.151074/s
+
+    EXECUTION
+    iteration_duration.............: avg=420.9ms  min=35.5ms  med=71.59ms max=37.1s  p(90)=805.36ms p(95)=2.99s
+    iterations.....................: 15755118 234.343575/s
+    vus............................: 100      min=0                  max=100
+    vus_max........................: 100      min=100                max=100
+
+    NETWORK
+    data_received..................: 13 GB    188 kB/s
+    data_sent......................: 2.5 GB   37 kB/s
+
+running (0d18h40m39.5s), 000/100 VUs, 15755118 complete and 100 interrupted iterations
+sustained_load ✗ [============================>---------] 001/100 VUs  0d18h40m29.2s/1d00h00m00.0s
+```
+
+### Load tests
 
 ```
 $ k6 run --vus 250 --duration 5m get_test.js  

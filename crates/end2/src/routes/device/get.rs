@@ -19,7 +19,7 @@ pub async fn get_device(
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_device(
     State(app_state): State<AppState>,
-    _user: User,
+    // _user: User,
     Path((user_id, device_id)): Path<(UserId, DeviceId)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
@@ -48,7 +48,7 @@ pub async fn get_devices(
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_devices(
     State(app_state): State<AppState>,
-    _user: User,
+    // _user: User,
     Path(user_id): Path<UserId>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state
@@ -65,7 +65,7 @@ pub async fn get_user_devices(
 #[tracing::instrument(skip(app_state))]
 pub async fn get_user_device_key_history(
     State(app_state): State<AppState>,
-    _user: User,
+    // _user: User,
     Path((user_id, device_id)): Path<(UserId, DeviceId)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let target_user = app_state

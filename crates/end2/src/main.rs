@@ -181,9 +181,9 @@ async fn main() -> Result<(), std::io::Error> {
 
     let signing_key = Arc::new(signing_key);
 
-    // let device_keys = setup_comet_device_keys(pool.clone(), signing_key.clone());
+    let device_keys = setup_comet_device_keys(pool.clone(), signing_key.clone());
     // let device_keys = setup_db_device_keys(pool.clone());
-    let device_keys = setup_eth_device_keys(pool.clone()).await;
+    // let device_keys = setup_eth_device_keys(pool.clone()).await;
 
     let auth = Arc::new(DbAuthService::new(pool.clone(), oauth));
     let otks = Arc::new(DbOtkService::new(pool.clone()));

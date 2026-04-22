@@ -22,3 +22,7 @@ from it.
 ```
 k6 run --vus 250 --duration 5m get_device.js
 ```
+
+```
+$env:K6_PROMETHEUS_RW_FLUSH_PERIOD="5s"; k6 run --out prometheus-rw=http://localhost:9090/api/v1/write script.js
+```
