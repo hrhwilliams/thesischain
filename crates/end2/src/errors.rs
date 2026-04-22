@@ -144,6 +144,12 @@ impl ApiError {
                 message: "signature was invalid".to_string(),
                 detail: None,
             },
+            AppError::MissingSignatureForDevice => Self {
+                status: StatusCode::BAD_REQUEST.into(),
+                message: "device keys must be signed with previous key or different device"
+                    .to_string(),
+                detail: None,
+            },
             AppError::NoSuchUser => Self {
                 status: StatusCode::BAD_REQUEST.into(),
                 message: "user does not exist".to_string(),
@@ -211,6 +217,7 @@ pub enum AppError {
     InvalidKey(String),
     InvalidKeySize,
     InvalidSignature,
+    MissingSignatureForDevice,
     NoSuchUser,
     UserError(String),
     PoolError(String),

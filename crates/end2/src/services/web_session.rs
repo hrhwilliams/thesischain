@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use diesel::r2d2::ConnectionManager;
 use diesel::{
     ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,

@@ -45,6 +45,43 @@ pub struct InboundDevice {
     pub ed25519: String,
     pub x25519: String,
     pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization: Option<InboundAuthorization>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InboundAuthorization {
+    pub authorizing_device_id: DeviceId,
+    pub signature: String,
+}
+
+impl InboundAuthorization {
+    /// Verify that `authorizing_key` signed `(device_id || x25519 || ed25519)`.
+    pub fn verify(
+        &self,
+        authorizing_key: &Ed25519PublicKey,
+        device_id: DeviceId,
+        x25519: &Curve25519PublicKey,
+        ed25519: &Ed25519PublicKey,
+    ) -> Result<(), AppError> {
+        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(authorizing_key.as_bytes())
+            .map_err(|e| AppError::InvalidKey(e.to_string()))?;
+
+        let sig = Ed25519Signature::from_base64(&self.signature)
+            .map_err(|_| AppError::InvalidSignature)?;
+        let signature = Signature::from_bytes(&sig.to_bytes());
+
+        let message = [
+            device_id.into_inner().as_bytes() as &[u8],
+            x25519.as_bytes(),
+            ed25519.as_bytes(),
+        ]
+        .concat();
+
+        verifying_key
+            .verify_strict(&message, &signature)
+            .map_err(|e| AppError::ChallengeFailed(e.to_string()))
+    }
 }
 
 impl NewDevice {
