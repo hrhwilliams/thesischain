@@ -6,9 +6,9 @@ const BASE = 'https://chat.fiatlux.dev';
 const uploadDuration = new Trend('upload_device_ms', true);
 
 const DEVICE_KEYS = {
-  ed25519: "PbCMOYxMo6vTYC9uGiGcqHpJIIpjWOtvWG2sVSX+TKg",
-  x25519:  "WS2NBb75L0Gcw96kNGfJgh56aPrYxRgjJG3hOifEQ04",
-  signature: "NPA6Z/4omyLxqz3SACx/NDqifqutUxyCwcL0KBAdCUm4SfZ7vvZ1p2nU6o5VTC9afUUqFhTLPEXZfx8GllLGAA",
+  x25519: "LR4dZunFFF69UCugXHL3/zNTJXDDmDfVttl5ORXfkXA",
+  ed25519: "93Vusp00BP+WIQErG4R98Qcy1Tv5yy/3yhfmx1wLtAI",
+  signature: "kLGPLMish6immKlr6ETukGIAGWAXW1jiBb/qEi+N/ITtHtpXJEgxDLX3zY/R9E0sswfLJq7fAZAz3wPq9GLzDA",
 };
 
 export default function () {
