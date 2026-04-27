@@ -279,6 +279,7 @@ where
                     x25519: event.x25519.to_vec(),
                     ed25519: event.ed25519.to_vec(),
                     signature: event.signature.to_vec(),
+                    authorization: None,
                 })
             })
             .collect();

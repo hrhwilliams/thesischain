@@ -288,7 +288,7 @@ docker run -p 9090:9090 prom/prometheus --config.file=/etc/prometheus/prometheus
 
 start k6
 ```sh
-$env:K6_PROMETHEUS_RW_FLUSH_PERIOD="5s"; $env:K6_PROMETHEUS_RW_TREND_STATS="avg,p(50),p(99)"; k6 run --out experimental-prometheus-rw=http://localhost:9090/api/v1/write .\cometbft_test.js
+$env:K6_PROMETHEUS_RW_FLUSH_PERIOD="5s"; $env:K6_PROMETHEUS_RW_TREND_STATS="p(50),p(99)"; k6 run --out experimental-prometheus-rw=http://localhost:9090/api/v1/write .\cometbft_test.js
 ```
 
 start grafana
@@ -300,8 +300,8 @@ docker run -p 3001:3000 grafana/grafana
 
 add prometheus at `http://host.docker.internal:9090` as a data source. can add k6 dashboard with ID 19665
 
-14h45m (2026-04-22 11:07:05) into run, killed node3
-15h18m (2026-04-22 11:40:50) into run, restarted node3
+14h45m (2026-04-22 11:07:05 CDT) into run, killed node3
+15h18m (2026-04-22 11:40:50 CDT) into run, restarted node3
 
 ```
   █ TOTAL RESULTS 
@@ -344,6 +344,107 @@ add prometheus at `http://host.docker.internal:9090` as a data source. can add k
 
 running (0d18h40m39.5s), 000/100 VUs, 15755118 complete and 100 interrupted iterations
 sustained_load ✗ [============================>---------] 001/100 VUs  0d18h40m29.2s/1d00h00m00.0s
+```
+
+#### Second run
+
+Taking one node offline made the p99 curve go linear for a moment, increasing 
+from 2.8 to 4.6 sec over ~15 min. Once the node was brought online the
+upload time remained flat at 4.6.
+
+Nodes seem to have a steady state where they're around 4MiB read and 2 MiB write
+per second as they work. Once a node was brought back up, all of the other nodes
+experienced an increase in read, presumably to sync the node to the state.
+That node itself stays in a state of increased read (17MiB), after which
+maybe performance will return to normal?
+
+Killed node2 at 10:44am CDT
+Brought node2 back up at 11:00am CDT
+
+Node2 disk read ~17MiB since 11:00am and 0 write.
+
+Other nodes saw 60% increase in disk read after node2 back online
+
+```
+  █ TOTAL RESULTS 
+
+    checks_total.......: 20574722 579.357293/s
+    checks_succeeded...: 99.94%   20563887 out of 20574722
+    checks_failed......: 0.05%    10835 out of 20574722
+
+    ✗ get device 200
+      ↳  99% — ✓ 8663268 / ✗ 121
+    ✗ has x25519
+      ↳  99% — ✓ 8663268 / ✗ 121
+    ✗ get history 200
+      ↳  99% — ✓ 1082342 / ✗ 17
+    ✗ has entries
+      ↳  99% — ✓ 1082342 / ✗ 17
+    ✗ put device 200
+      ↳  99% — ✓ 1072667 / ✗ 10559
+
+    CUSTOM
+    get_device_history_ms..........: avg=134.62ms min=39ms    med=76ms     max=9.66s  p(90)=254ms    p(95)=321ms
+    get_device_ms..................: avg=136.54ms min=36ms    med=81ms     max=9.65s  p(90)=255ms    p(95)=321ms
+    upload_device_ms...............: avg=1.39s    min=35ms    med=1.35s    max=12.46s p(90)=1.89s    p(95)=2.1s 
+
+    HTTP
+    http_req_duration..............: avg=242.43ms min=34.99ms med=93.08ms  max=12.46s p(90)=441.01ms p(95)=1.32s
+      { expected_response:true }...: avg=242.63ms min=36.19ms med=93.05ms  max=12.46s p(90)=442.75ms p(95)=1.32s
+    http_req_failed................: 0.20%    26139 out of 12995648
+    http_reqs......................: 12995648 365.94047/s
+
+    EXECUTION
+    iteration_duration.............: avg=491.46ms min=237.1ms med=288.41ms max=13.03s p(90)=1.13s    p(95)=1.83s
+    iterations.....................: 10828964 304.929479/s
+    vus............................: 150      min=2                 max=150
+    vus_max........................: 150      min=150               max=150
+
+    NETWORK
+    data_received..................: 8.8 GB   247 kB/s
+    data_sent......................: 1.7 GB   48 kB/s
+
+running (09h51m58.1s), 000/150 VUs, 10828964 complete and 150 interrupted iterations
+sustained_load ✗ [==============>-----------------------] 000/150 VUs  09h51m50.9s/23h31m00.0s
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 690273 515.318735/s
+    checks_succeeded...: 99.93% 689857 out of 690273
+    checks_failed......: 0.06%  416 out of 690273
+
+    ✗ get device 200
+      ↳  99% — ✓ 290343 / ✗ 4
+    ✗ has x25519
+      ↳  99% — ✓ 290343 / ✗ 4
+    ✓ get history 200
+    ✓ has entries
+    ✗ put device 200
+      ↳  98% — ✓ 36039 / ✗ 408
+
+    CUSTOM
+    get_device_history_ms..........: avg=178.02ms min=46ms     med=81ms     max=5.23s p(90)=404ms    p(95)=493ms  
+    get_device_ms..................: avg=178.36ms min=41ms     med=84ms     max=5.19s p(90)=406ms    p(95)=492.7ms
+    upload_device_ms...............: avg=1.43s    min=47ms     med=1.4s     max=7.93s p(90)=1.96s    p(95)=2.18s  
+
+    HTTP
+    http_req_duration..............: avg=282.64ms min=39.52ms  med=100.89ms max=7.93s p(90)=622.47ms p(95)=1.36s  
+      { expected_response:true }...: avg=282.86ms min=39.69ms  med=100.67ms max=7.93s p(90)=624.74ms p(95)=1.36s  
+    http_req_failed................: 0.22%  994 out of 436530
+    http_reqs......................: 436530 325.888579/s
+
+    EXECUTION
+    iteration_duration.............: avg=540.21ms min=241.44ms med=295.28ms max=8.33s p(90)=1.22s    p(95)=1.98s  
+    iterations.....................: 363330 271.241604/s
+    vus............................: 150    min=2             max=150
+    vus_max........................: 150    min=150           max=150
+
+    NETWORK
+    data_received..................: 295 MB 220 kB/s
+    data_sent......................: 57 MB  43 kB/s
+
+running (00h22m19.7s), 000/150 VUs, 363330 complete and 150 interrupted iterations
+sustained_load ✗ [--------------------------------------] 099/150 VUs  00h22m19.3s/23h31m00.0s
 ```
 
 ### Load tests

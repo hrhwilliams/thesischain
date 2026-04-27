@@ -14,7 +14,8 @@ use sha2::{Digest, Sha256};
 use vodozemac::{Curve25519PublicKey, Ed25519PublicKey};
 
 use crate::{
-    AppError, Device, DeviceId, DeviceKeyService, HistoricalKey, InboundDevice, NewDevice, User,
+    AppError, Device, DeviceId, DeviceKeyService, HistoricalKey, InboundAuthorization,
+    InboundDevice, NewDevice, User,
     schema::{device, user as user_table},
 };
 
@@ -23,11 +24,14 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 struct KeyPayload {
     user_hash: String,
+    // String to simplify passing to cometbft
     device_id: String,
     x25519: String,
     ed25519: String,
     // base64 device self-signature (ed25519 over x25519||ed25519 bytes)
     signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authorization: Option<InboundAuthorization>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -193,8 +197,7 @@ impl CometBftDeviceKeyService {
     // Polls until the tx with the given hash is committed in a block.
     // CometBFT JSON-RPC expects `hash` as base64-encoded raw bytes.
     async fn wait_for_tx(&self, hash: &str) -> Result<(), AppError> {
-        let hash_bytes =
-            hex::decode(hash).map_err(|e| AppError::ValueError(e.to_string()))?;
+        let hash_bytes = hex::decode(hash).map_err(|e| AppError::ValueError(e.to_string()))?;
         let hash_b64 = BASE64_STANDARD.encode(&hash_bytes);
 
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -436,12 +439,12 @@ impl DeviceKeyService for CometBftDeviceKeyService {
             x25519: BASE64_STANDARD_NO_PAD.encode(x25519_bytes),
             ed25519: BASE64_STANDARD_NO_PAD.encode(ed25519_bytes),
             signature: keys.signature.clone(),
+            authorization: keys.authorization.clone(),
         };
 
         let msg = serde_json::to_vec(&payload).map_err(|e| AppError::ValueError(e.to_string()))?;
         let sig = self.signing_key.sign(&msg);
 
-        // Submit to CometBFT and wait for block inclusion before updating Postgres.
         let hash = self
             .broadcast_tx_sync(&KeyUploadTx {
                 payload,
@@ -516,7 +519,14 @@ impl DeviceKeyService for CometBftDeviceKeyService {
                 let signature = BASE64_STANDARD_NO_PAD
                     .decode(&tx.payload.signature)
                     .map_err(|e| AppError::InvalidB64(e.to_string()))?;
-                history.push(HistoricalKey { device_id, chain_height, x25519, ed25519, signature });
+                history.push(HistoricalKey {
+                    device_id,
+                    chain_height,
+                    x25519,
+                    ed25519,
+                    signature,
+                    authorization: tx.payload.authorization,
+                });
             }
         }
 

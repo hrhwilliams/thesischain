@@ -4,7 +4,10 @@ use axum::{
     extract::{Path, State},
     response::IntoResponse,
 };
-use vodozemac::{Curve25519PublicKey, Ed25519PublicKey};
+use base64::prelude::BASE64_STANDARD;
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
+use ed25519_dalek::Signature;
+use vodozemac::{Curve25519PublicKey, Ed25519PublicKey, Ed25519Signature};
 
 #[tracing::instrument(skip(app_state))]
 pub async fn new_device(
@@ -22,7 +25,7 @@ pub async fn upload_keys(
     Path(device_id): Path<DeviceId>,
     Json(inbound_device_keys): Json<InboundDevice>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let device = set_device_keys(&app_state, user, device_id, inbound_device_keys).await?;
+    let device = validate_device_keys(&app_state, user, device_id, inbound_device_keys).await?;
     Ok(Json(device))
 }
 
@@ -35,11 +38,11 @@ pub async fn upload_keys_me(
     let device_id = inbound_device_keys
         .device_id
         .ok_or_else(|| AppError::UserError("no device id provided".to_string()))?;
-    let device = set_device_keys(&app_state, user, device_id, inbound_device_keys).await?;
+    let device = validate_device_keys(&app_state, user, device_id, inbound_device_keys).await?;
     Ok(Json(device))
 }
 
-async fn set_device_keys(
+async fn validate_device_keys(
     app_state: &AppState,
     user: User,
     device_id: DeviceId,
@@ -75,15 +78,17 @@ async fn set_device_keys(
         let authorizing_ed25519_bytes: [u8; 32] = authorizing_ed25519_bytes
             .try_into()
             .map_err(|_| AppError::InvalidKey("stored authorizing ed25519 not 32 bytes".into()))?;
-        let authorizing_key = Ed25519PublicKey::from_slice(&authorizing_ed25519_bytes)
+        let prev_device_key = Ed25519PublicKey::from_slice(&authorizing_ed25519_bytes)
             .map_err(|e| AppError::InvalidKey(e.to_string()))?;
 
-        let new_x25519 = Curve25519PublicKey::from_base64(&inbound_device_keys.x25519)
-            .map_err(|e| AppError::InvalidKey(e.to_string()))?;
-        let new_ed25519 = Ed25519PublicKey::from_base64(&inbound_device_keys.ed25519)
-            .map_err(|e| AppError::InvalidKey(e.to_string()))?;
+        let signature_bytes: [u8; 64] = BASE64_STANDARD_NO_PAD
+            .decode(&inbound_device_keys.signature)
+            .map_err(|e| AppError::InvalidB64(e.to_string()))?
+            .try_into()
+            .map_err(|_| AppError::InvalidSignature)?;
+        let signature = Signature::from_bytes(&signature_bytes);
 
-        authorization.verify(&authorizing_key, device_id, &new_x25519, &new_ed25519)?;
+        authorization.verify(&prev_device_key, signature)?;
     }
 
     let device = app_state

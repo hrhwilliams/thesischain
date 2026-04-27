@@ -7,20 +7,34 @@ use std::{
 
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use jmt::{JellyfishMerkleTree, KeyHash, storage::TreeUpdateBatch};
 use rocksdb::WriteBatch;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tendermint_abci::{Application, ServerBuilder};
-use tendermint_proto::abci as proto;
+use tendermint_proto::abci::{
+    Event, EventAttribute, ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo,
+    RequestQuery, ResponseCheckTx, ResponseCommit, ResponseFinalizeBlock, ResponseInfo,
+    ResponseQuery,
+};
 
 use crate::store::{META_APP_HASH, META_HEIGHT, Store};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InboundAuthorization {
+    pub authorizing_device_id: String,
+    pub signature: String,
+}
+
+#[derive(Serialize, Deserialize)]
 struct KeyPayload {
     user_hash: String,
     device_id: String,
     x25519: String,
     ed25519: String,
     signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authorization: Option<InboundAuthorization>,
 }
 
 fn decode_key32(s: &str) -> Result<[u8; 32], &'static str> {
@@ -31,13 +45,13 @@ fn decode_key32(s: &str) -> Result<[u8; 32], &'static str> {
         .map_err(|_| "key must be 32 bytes")
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 struct KeyUploadTx {
     payload: KeyPayload,
     signature: String,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct DeviceKeys {
     x25519: [u8; 32],
     ed25519: [u8; 32],
@@ -49,6 +63,7 @@ struct Pending {
     app_hash: [u8; 32],
     // (rocksdb key, JSON(DeviceKeys)) — written into rocksdb on commit.
     writes: Vec<(Vec<u8>, Vec<u8>)>,
+    tree_update: TreeUpdateBatch,
 }
 
 #[derive(Clone)]
@@ -87,16 +102,16 @@ fn verify_tx(bytes: &[u8], key: &VerifyingKey) -> Result<KeyPayload, &'static st
     Ok(tx.payload)
 }
 
-fn check_tx_err(log: &str) -> proto::ResponseCheckTx {
-    proto::ResponseCheckTx {
+fn check_tx_err(log: &str) -> ResponseCheckTx {
+    ResponseCheckTx {
         code: 1,
         log: log.to_owned(),
         ..Default::default()
     }
 }
 
-fn err_query(msg: &str) -> proto::ResponseQuery {
-    proto::ResponseQuery {
+fn err_query(msg: &str) -> ResponseQuery {
+    ResponseQuery {
         code: 1,
         log: msg.to_owned(),
         ..Default::default()
@@ -104,10 +119,10 @@ fn err_query(msg: &str) -> proto::ResponseQuery {
 }
 
 impl Application for KeyDirectoryApp {
-    fn info(&self, _req: proto::RequestInfo) -> proto::ResponseInfo {
+    fn info(&self, _req: RequestInfo) -> ResponseInfo {
         let height = self.store.last_height();
         let app_hash = self.store.last_app_hash();
-        proto::ResponseInfo {
+        ResponseInfo {
             data: "end2-cometbft".to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
             app_version: 1,
@@ -116,25 +131,26 @@ impl Application for KeyDirectoryApp {
         }
     }
 
-    fn check_tx(&self, req: proto::RequestCheckTx) -> proto::ResponseCheckTx {
+    fn check_tx(&self, req: RequestCheckTx) -> ResponseCheckTx {
         match verify_tx(&req.tx, &self.verifying_key) {
-            Ok(_) => proto::ResponseCheckTx::default(),
+            Ok(_) => ResponseCheckTx::default(),
             Err(msg) => check_tx_err(msg),
         }
     }
 
-    fn finalize_block(&self, req: proto::RequestFinalizeBlock) -> proto::ResponseFinalizeBlock {
-        let mut tx_results: Vec<proto::ExecTxResult> = Vec::with_capacity(req.txs.len());
+    fn finalize_block(&self, req: RequestFinalizeBlock) -> ResponseFinalizeBlock {
+        let mut tx_results: Vec<ExecTxResult> = Vec::with_capacity(req.txs.len());
 
         // Overlay of this block's writes keyed by rocksdb key, for hash computation
         // and to detect add-vs-update within the same block.
         let mut overlay: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
+        let mut tree_updates: Vec<(KeyHash, Option<Vec<u8>>)> = Vec::with_capacity(req.txs.len());
 
         for raw in &req.txs {
             let payload = match verify_tx(raw, &self.verifying_key) {
                 Ok(p) => p,
                 Err(msg) => {
-                    tx_results.push(proto::ExecTxResult {
+                    tx_results.push(ExecTxResult {
                         code: 1,
                         log: msg.to_owned(),
                         ..Default::default()
@@ -149,7 +165,7 @@ impl Application for KeyDirectoryApp {
             ) {
                 (Ok(x), Ok(e)) => (x, e),
                 _ => {
-                    tx_results.push(proto::ExecTxResult {
+                    tx_results.push(ExecTxResult {
                         code: 1,
                         log: "invalid key encoding".to_owned(),
                         ..Default::default()
@@ -168,18 +184,22 @@ impl Application for KeyDirectoryApp {
             let event_type = if existed { "key_update" } else { "key_add" };
 
             let value_json = serde_json::to_vec(&new_keys).expect("DeviceKeys json");
-            overlay.insert(rk, value_json);
+            overlay.insert(rk.clone(), value_json.clone());
 
-            tx_results.push(proto::ExecTxResult {
-                events: vec![proto::Event {
+            let key_hash = KeyHash::with::<Sha256>(&rk);
+            let val_hash = Sha256::digest(&value_json).to_vec();
+            tree_updates.push((key_hash, Some(val_hash)));
+
+            tx_results.push(ExecTxResult {
+                events: vec![Event {
                     r#type: event_type.to_owned(),
                     attributes: vec![
-                        proto::EventAttribute {
+                        EventAttribute {
                             key: "user_hash".to_owned(),
                             value: user_hash_hex,
                             index: true,
                         },
-                        proto::EventAttribute {
+                        EventAttribute {
                             key: "device_id".to_owned(),
                             value: device_id,
                             index: true,
@@ -190,31 +210,39 @@ impl Application for KeyDirectoryApp {
             });
         }
 
-        // Compute app_hash over (current rocksdb state ∪ overlay), sorted by key.
-        // Merge: rocksdb iterator is already in sorted order; BTreeMap too.
-        let app_hash = compute_app_hash(&self.store, &overlay);
+        let version = req.height as u64;
+
+        let tree = JellyfishMerkleTree::<_, Sha256>::new(self.store.as_ref());
+        let (root_hash, tree_update) = tree
+            .put_value_set(tree_updates, version)
+            .expect("JMT put_value_set failed");
 
         let writes: Vec<(Vec<u8>, Vec<u8>)> = overlay.into_iter().collect();
-        *self.pending.lock().unwrap() = Some(Pending {
-            height: req.height as u64,
-            app_hash,
+        *self.pending.lock().expect("lock pending") = Some(Pending {
+            height: version,
+            app_hash: root_hash.0,
             writes,
+            tree_update,
         });
 
-        proto::ResponseFinalizeBlock {
+        ResponseFinalizeBlock {
             tx_results,
-            app_hash: app_hash.to_vec().into(),
+            app_hash: root_hash.0.to_vec().into(),
             ..Default::default()
         }
     }
 
-    fn commit(&self) -> proto::ResponseCommit {
+    fn commit(&self) -> ResponseCommit {
         let pending = self.pending.lock().unwrap().take();
         if let Some(p) = pending {
             let mut batch = WriteBatch::default();
+
             for (k, v) in p.writes {
-                batch.put(k, v);
+                batch.put_cf(self.store.cf_device(), k, v);
             }
+
+            self.store.write_tree_update(&mut batch, p.tree_update);
+
             batch.put(META_HEIGHT, p.height.to_le_bytes());
             batch.put(META_APP_HASH, p.app_hash);
 
@@ -225,7 +253,7 @@ impl Application for KeyDirectoryApp {
                 .write_opt(batch, &wo)
                 .expect("rocksdb commit write failed");
         }
-        proto::ResponseCommit::default()
+        ResponseCommit::default()
     }
 
     /// Supported query paths. Store key is `hex(user_hash)`, a 64-char hex string.
@@ -237,7 +265,7 @@ impl Application for KeyDirectoryApp {
     /// `"devices"` - fetch all devices for a user.
     /// `data` = `"<hex_user_hash>"` as UTF-8, then hex-encoded for the RPC.
     /// Returns `HashMap<device_id, DeviceKeys>` as JSON.
-    fn query(&self, req: proto::RequestQuery) -> proto::ResponseQuery {
+    fn query(&self, req: RequestQuery) -> ResponseQuery {
         match req.path.as_str() {
             "device" => {
                 let raw = String::from_utf8_lossy(&req.data);
@@ -245,7 +273,7 @@ impl Application for KeyDirectoryApp {
                     return err_query("data must be '<hex_user_hash>:<device_id>'");
                 };
                 match self.store.get_device(user_hash_hex, device_id) {
-                    Some(bytes) => proto::ResponseQuery {
+                    Some(bytes) => ResponseQuery {
                         value: bytes.into(),
                         ..Default::default()
                     },
@@ -267,7 +295,7 @@ impl Application for KeyDirectoryApp {
                         serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
                     map.insert(id, val);
                 }
-                proto::ResponseQuery {
+                ResponseQuery {
                     value: serde_json::to_vec(&serde_json::Value::Object(map))
                         .unwrap_or_default()
                         .into(),
@@ -280,57 +308,6 @@ impl Application for KeyDirectoryApp {
             )),
         }
     }
-}
-
-// Deterministic sha256 over all (key, value) pairs in sorted rocksdb-key order,
-// with the current block's overlay applied on top.
-fn compute_app_hash(store: &Store, overlay: &BTreeMap<Vec<u8>, Vec<u8>>) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-
-    // Merge rocksdb entries with this block's overlay into one sorted stream,
-    // overlay wins on key collision.
-    let db_entries = store.all_devices();
-    let mut db_iter = db_entries.into_iter().peekable();
-    let mut ov_iter = overlay.iter().peekable();
-
-    loop {
-        let next = match (db_iter.peek(), ov_iter.peek()) {
-            (None, None) => break,
-            (Some(_), None) => {
-                let (k, v) = db_iter.next().unwrap();
-                (k, v)
-            }
-            (None, Some(_)) => {
-                let (k, v) = ov_iter.next().unwrap();
-                (k.clone(), v.clone())
-            }
-            (Some((dk, _)), Some((ok, _))) => {
-                use std::cmp::Ordering::*;
-                match dk.as_slice().cmp(ok.as_slice()) {
-                    Less => {
-                        let (k, v) = db_iter.next().unwrap();
-                        (k, v)
-                    }
-                    Greater => {
-                        let (k, v) = ov_iter.next().unwrap();
-                        (k.clone(), v.clone())
-                    }
-                    Equal => {
-                        let _ = db_iter.next();
-                        let (k, v) = ov_iter.next().unwrap();
-                        (k.clone(), v.clone())
-                    }
-                }
-            }
-        };
-        let (k, v) = next;
-        hasher.update(&(k.len() as u32).to_le_bytes());
-        hasher.update(&k);
-        hasher.update(&(v.len() as u32).to_le_bytes());
-        hasher.update(&v);
-    }
-
-    hasher.finalize().into()
 }
 
 fn main() -> Result<(), tendermint_abci::Error> {
