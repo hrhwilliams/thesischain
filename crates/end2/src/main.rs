@@ -9,7 +9,10 @@ use alloy::{
 use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use diesel::{PgConnection, r2d2::ConnectionManager};
 use ed25519_dalek::SigningKey;
-use end2::{AppState, CometBftDeviceKeyService, DeviceKeyService, EthDeviceKeyService};
+use end2::{
+    AppState, CometBftDeviceKeyService, DeviceKeyService, EthDeviceKeyService,
+    ForgingDeviceKeyService, MaliciousDeviceKeyService,
+};
 use mimalloc::MiMalloc;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::PeriodicReader;
@@ -111,6 +114,22 @@ fn setup_db_device_keys(pool: Pool<ConnectionManager<PgConnection>>) -> Arc<dyn 
     Arc::new(DbDeviceKeyService::new(pool))
 }
 
+fn setup_malicious_device_keys(
+    pool: Pool<ConnectionManager<PgConnection>>,
+    signing_key: Arc<SigningKey>,
+) -> Arc<dyn DeviceKeyService> {
+    let rpc_url = std::env::var("COMET_RPC_URL").expect("COMET_RPC_URL must be set");
+    Arc::new(MaliciousDeviceKeyService::new(rpc_url, signing_key, pool))
+}
+
+fn setup_forging_device_keys(
+    pool: Pool<ConnectionManager<PgConnection>>,
+    signing_key: Arc<SigningKey>,
+) -> Arc<dyn DeviceKeyService> {
+    let rpc_url = std::env::var("COMET_RPC_URL").expect("COMET_RPC_URL must be set");
+    Arc::new(ForgingDeviceKeyService::new(rpc_url, signing_key, pool))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     dotenvy::dotenv().ok();
@@ -181,9 +200,11 @@ async fn main() -> Result<(), std::io::Error> {
 
     let signing_key = Arc::new(signing_key);
 
-    let device_keys = setup_comet_device_keys(pool.clone(), signing_key.clone());
+    // let device_keys = setup_comet_device_keys(pool.clone(), signing_key.clone());
     // let device_keys = setup_db_device_keys(pool.clone());
     // let device_keys = setup_eth_device_keys(pool.clone()).await;
+    // let device_keys = setup_malicious_device_keys(pool.clone(), signing_key.clone());
+    let device_keys = setup_forging_device_keys(pool.clone(), signing_key.clone());
 
     let auth = Arc::new(DbAuthService::new(pool.clone(), oauth));
     let otks = Arc::new(DbOtkService::new(pool.clone()));
