@@ -1,0 +1,34 @@
+%%{init: {
+'theme': 'base',
+'themeVariables': {
+'fontSize': '14px',
+'primaryColor': '#f5f5f4',
+'primaryTextColor': '#1c1917',
+'primaryBorderColor': '#a8a29e',
+'lineColor': '#78716c',
+'secondaryColor': '#fafaf9',
+'tertiaryColor': '#ffffff'
+}
+}}%%
+
+flowchart TD
+    user[User]
+
+    subgraph end2 [End2]
+        subgraph edge [Edge]
+            client[Web client<br/>Vue, WebAssembly]
+            tunnel[Cloudflare tunnel]
+            nginx[Nginx]
+        end
+        subgraph app [Application]
+            backend[Backend<br/>Auth, OTK, Relay]
+            pg[(PostgreSQL)]
+            keydir[(Key directory)]
+        end
+    end
+
+    user --> client
+    client --> tunnel --> nginx --> backend
+    backend --> pg
+    backend --> keydir
+    client -.direct queries.-> keydir

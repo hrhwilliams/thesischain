@@ -1,0 +1,37 @@
+%%{init: {
+'theme': 'base',
+'themeVariables': {
+'fontSize': '14px',
+'primaryColor': '#f5f5f4',
+'primaryTextColor': '#1c1917',
+'primaryBorderColor': '#a8a29e',
+'lineColor': '#78716c',
+'secondaryColor': '#fafaf9',
+'tertiaryColor': '#ffffff'
+}
+}}%%
+
+flowchart TD
+    client([Web client])
+
+    subgraph backend [Backend]
+        auth[User authentication]
+        api[Key directory API]
+        ethclient[Ethereum API client]
+    end
+
+    subgraph eth [Ethereum]
+        rpc[JSON-RPC endpoint]
+        node[Ethereum network]
+        contract[Smart contract]
+        chain[(Replicated state<br/>key directory)]
+    end
+
+    client -->|HTTPS| auth
+    auth --> api
+    api --> ethclient
+    ethclient -->|eth_sendRawTransaction| rpc
+    rpc --> node
+    node --> contract
+    contract --> chain
+    client -.eth_call, eth_getLogs.-> rpc

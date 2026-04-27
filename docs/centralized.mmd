@@ -1,0 +1,28 @@
+%%{init: {
+'theme': 'base',
+'themeVariables': {
+'fontSize': '14px',
+'primaryColor': '#f5f5f4',
+'primaryTextColor': '#1c1917',
+'primaryBorderColor': '#a8a29e',
+'lineColor': '#78716c',
+'secondaryColor': '#fafaf9',
+'tertiaryColor': '#ffffff'
+}
+}}%%
+
+flowchart TD
+    client([Web client])
+
+    subgraph backend [Backend]
+        auth[User authentication]
+        api[Key directory API]
+        repo[Centralized key directory]
+    end
+
+    pg[(Key directory<br/>PostgreSQL)]
+
+    client -->|HTTPS| auth
+    auth --> api
+    api --> repo
+    repo -->|SQL| pg
